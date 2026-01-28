@@ -1,0 +1,8 @@
+.vscode/
+__pycache__/
+*.pyc
+
+wandb/
+results/
+bsub_outputs/
+.hyperparameter_search_scripts_main/
