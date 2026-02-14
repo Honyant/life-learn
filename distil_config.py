@@ -498,6 +498,14 @@ class DistilConfig(TrainingArguments):
                    "If False (default), use the student model for generation (standard RL behavior)."
         },
     )
+    full_logit_distillation: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use full logit distillation (analytic per-token KL over full vocabulary). "
+                   "Note: the current loss implementation always computes full-vocabulary KL regardless of this flag. "
+                   "This field exists to prevent AttributeError in distil_trainer.py:402."
+        },
+    )
     num_iterations: int = field(
         default=1,
         metadata={"help": "Number of iterations per batch (denoted as μ in the algorithm)."},
