@@ -265,7 +265,7 @@ class TestDataFormatter:
         # Must contain the expert demonstration
         assert "Expert demo text." in teacher_content
         # Must contain the generation instruction
-        assert "Now answer with a response of your own, including the thinking process." in teacher_content
+        assert "Now answer with a short, direct response of your own." in teacher_content
 
     def test_teacher_prompt_does_not_leak_into_student(self):
         demos = [ExpertDemo(prompt="Q?", demonstration="Secret expert answer")]
