@@ -18,8 +18,8 @@ class PipelineConfig:
     output_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent / "output")
 
     # SDFT training (no LoRA — full fine-tuning, matching the paper)
-    learning_rate: float = 5e-6
-    num_train_epochs: int = 10
+    learning_rate: float = 1e-5
+    num_train_epochs: int = 8
     gradient_accumulation_steps: int = 1  # effective batch = 4
     max_prompt_length: int = 512
     max_completion_length: int = 80
