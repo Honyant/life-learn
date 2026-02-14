@@ -64,7 +64,7 @@ def run_sdft_training(
         use_vllm=True,
         vllm_mode="colocate",
         vllm_tensor_parallel_size=1,
-        vllm_gpu_memory_utilization=0.3,
+        vllm_gpu_memory_utilization=0.6,
         vllm_enable_sleep_mode=True,
         # Optimiser
         learning_rate=learning_rate,
@@ -74,7 +74,7 @@ def run_sdft_training(
         bf16=True,
         fp16=False,
         # Batch: effective batch = per_device * gradient_accumulation
-        per_device_train_batch_size=1,
+        per_device_train_batch_size=4,
         gradient_accumulation_steps=gradient_accumulation_steps,
         max_prompt_length=max_prompt_length,
         max_completion_length=max_completion_length,
