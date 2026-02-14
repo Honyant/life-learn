@@ -1,10 +1,18 @@
-"""Shared inference module using a local HuggingFace model."""
+"""Shared inference module.
+
+Provides two classes with the same ``.generate()`` interface:
+
+* ``LocalInference``  – runs a HuggingFace model on GPU (for chat responses)
+* ``OpenAIInference`` – calls the OpenAI API (for structured tasks like
+  correction detection and augmentation where small local models fail)
+"""
 import torch
+from openai import OpenAI
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 class LocalInference:
-    """Manages a locally loaded model for inference (correction detection, augmentation, chat)."""
+    """Manages a locally loaded model for chat inference."""
 
     def __init__(self, model_name: str, device: str = "cuda"):
         self.device = device
@@ -46,3 +54,39 @@ class LocalInference:
         del self.model
         del self.tokenizer
         torch.cuda.empty_cache()
+
+
+class OpenAIInference:
+    """Calls the OpenAI API with the same ``.generate()`` signature as LocalInference.
+
+    Use this for structured tasks (correction detection, augmentation) where
+    small local models produce unreliable JSON output.
+    """
+
+    def __init__(self, model: str = "gpt-4o-mini"):
+        self.model = model
+        self.client = OpenAI()
+
+    def generate(
+        self,
+        messages: list[dict[str, str]],
+        max_new_tokens: int = 512,
+        temperature: float = 0.7,
+        do_sample: bool = True,
+    ) -> str:
+        """Generate a completion via the OpenAI API.
+
+        ``do_sample`` is accepted for interface compatibility but ignored
+        (temperature=0 is used for deterministic output instead).
+        """
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=max_new_tokens,
+            temperature=temperature if do_sample else 0.0,
+        )
+        return response.choices[0].message.content
+
+    def unload(self):
+        """No-op — included so OpenAIInference is a drop-in for LocalInference."""
+        pass

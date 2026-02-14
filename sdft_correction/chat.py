@@ -2,12 +2,12 @@
 
 Pipeline:
   1. User chats with the local model
-  2. Correction detector fires when the user corrects the model
-  3. Augmenter generates diverse prompt variations  (local model)
+  2. Correction detector fires when user corrects the model  (GPT-4o-mini API)
+  3. Augmenter generates diverse prompt variations           (GPT-4o-mini API)
   4. Local model is unloaded to free GPU
-  5. GPT-4o-mini generates expert demonstrations    (API, no GPU)
+  5. GPT-4o-mini generates expert demonstrations             (API, no GPU)
   6. Data formatter builds the SDFT dataset
-  7. DistilTrainer runs on-policy SDFT              (GPU)
+  7. DistilTrainer runs on-policy SDFT                       (GPU)
   8. Trained model is loaded back for verification
 """
 import os
@@ -16,7 +16,7 @@ from pathlib import Path
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from sdft_correction.config import PipelineConfig
-from sdft_correction.inference import LocalInference
+from sdft_correction.inference import LocalInference, OpenAIInference
 from sdft_correction.correction_detector import detect_correction
 from sdft_correction.augmenter import generate_prompt_variations
 from sdft_correction.expert_demos import generate_expert_demos
@@ -34,6 +34,11 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
 
     print("Loading model for chat...")
     llm = LocalInference(config.model_name)
+
+    # Structured tasks (correction detection, augmentation) use GPT-4o-mini
+    # because the 0.5B local model can't reliably produce JSON output.
+    smart_llm = OpenAIInference(model=config.openai_model)
+
     conversation: list[dict[str, str]] = []
 
     print("\n=== SDFT Correction Chat ===")
@@ -54,7 +59,7 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
         # Check for correction (need at least user-assistant-user)
         if len(conversation) >= 3:
             print("[Checking for correction...]")
-            result = detect_correction(conversation, llm)
+            result = detect_correction(conversation, smart_llm)
 
             if result.is_correction:
                 print(f"\n[CORRECTION DETECTED]")
@@ -63,14 +68,14 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
 
                 original_question = _find_original_question(conversation)
 
-                # ── Phase 1: Augmentation (local model, on GPU) ──
+                # ── Phase 1: Augmentation (GPT-4o-mini API) ──
                 print(f"\n[Generating {config.num_prompt_variations} prompt variations...]")
                 variations = generate_prompt_variations(
                     what_was_wrong=result.what_was_wrong,
                     what_should_be=result.what_should_be,
                     original_question=original_question,
                     original_wrong_response=result.original_model_response,
-                    llm=llm,
+                    llm=smart_llm,
                     n=config.num_prompt_variations,
                 )
                 all_prompts = [original_question] + variations
