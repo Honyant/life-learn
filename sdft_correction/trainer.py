@@ -64,7 +64,7 @@ def run_sdft_training(
         use_vllm=True,
         vllm_mode="colocate",
         vllm_tensor_parallel_size=1,
-        vllm_gpu_memory_utilization=0.6,
+        vllm_gpu_memory_utilization=0.3,
         vllm_enable_sleep_mode=True,
         # Optimiser
         learning_rate=learning_rate,
