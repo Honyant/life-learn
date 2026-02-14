@@ -152,8 +152,8 @@ def run_sdft_training(
         use_vllm=False,
         # Optimiser
         learning_rate=learning_rate,
-        warmup_ratio=0.1,
-        lr_scheduler_type="cosine",
+        warmup_ratio=0.0,
+        lr_scheduler_type="constant",
         logging_steps=1,
         bf16=True,
         fp16=False,
