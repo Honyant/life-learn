@@ -12,6 +12,7 @@ The training loop (inside DistilTrainer) works as follows for each batch:
 import gc
 import os
 import sys
+import threading
 from pathlib import Path
 
 import torch
@@ -62,6 +63,10 @@ class VLLMInference:
         """Clean up the trainer's vLLM engine and free GPU memory."""
         if self._trainer is None:
             return
+        # Wait for background save to finish before destroying the model
+        if hasattr(self, '_save_thread') and self._save_thread is not None:
+            self._save_thread.join()
+            self._save_thread = None
         if hasattr(self._trainer, 'llm') and self._trainer.llm is not None:
             llm_engine = getattr(self._trainer.llm, 'llm_engine', None)
             if llm_engine is not None and hasattr(llm_engine, 'shutdown'):
@@ -158,11 +163,18 @@ def run_sdft_training(
 
     trainer.train()
 
-    # Save the trained model
+    # Save the trained model in background while we return vLLM for inference
     save_path = os.path.join(output_dir, "trained_model")
-    trainer.model.save_pretrained(save_path)
-    tokenizer.save_pretrained(save_path)
+
+    def _save_in_background():
+        trainer.model.save_pretrained(save_path)
+        tokenizer.save_pretrained(save_path)
+        print(f"[Background save complete: {save_path}]")
+
+    save_thread = threading.Thread(target=_save_in_background, daemon=True)
+    save_thread.start()
 
     # Return the trainer wrapped for inference — caller owns cleanup via .unload()
     vllm_llm = VLLMInference(trainer, tokenizer)
+    vllm_llm._save_thread = save_thread  # keep reference so caller can wait if needed
     return save_path, vllm_llm
