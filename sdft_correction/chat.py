@@ -2,13 +2,16 @@
 
 Pipeline:
   1. User chats with the local model
-  2. Correction detector fires when user corrects the model  (GPT-4o-mini API)
-  3. Augmenter generates diverse prompt variations           (GPT-4o-mini API)
+  2. Correction detector fires when user corrects the model  (API or local)
+  3. Augmenter generates diverse prompt variations           (API or local)
   4. Local model is unloaded to free GPU
   5. GPT-4o-mini generates expert demonstrations             (API, no GPU)
   6. Data formatter builds the SDFT dataset
   7. DistilTrainer runs on-policy SDFT                       (GPU)
   8. Trained model is loaded back for verification
+
+Set config.use_local_for_structured=True to use the local model for steps 2-3
+instead of GPT-4o-mini. Works better with larger models (7B+).
 """
 import os
 import torch
@@ -35,9 +38,14 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
     print("Loading model for chat...")
     llm = LocalInference(config.model_name)
 
-    # Structured tasks (correction detection, augmentation) use GPT-4o-mini
-    # because the 0.5B local model can't reliably produce JSON output.
-    smart_llm = OpenAIInference(model=config.openai_model)
+    # Structured tasks (correction detection, augmentation) can use either
+    # GPT-4o-mini (reliable JSON) or the local model (no API dependency).
+    if config.use_local_for_structured:
+        print("[Using LOCAL model for correction detection & augmentation]")
+        smart_llm = llm
+    else:
+        print("[Using OpenAI API for correction detection & augmentation]")
+        smart_llm = OpenAIInference(model=config.openai_model)
 
     conversation: list[dict[str, str]] = []
 

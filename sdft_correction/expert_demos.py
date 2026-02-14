@@ -17,15 +17,14 @@ class ExpertDemo:
 
 
 EXPERT_SYSTEM_PROMPT = """\
-You are an expert assistant providing correct, thorough responses.
+You are an expert assistant. Be concise — answer in 2-4 sentences max.
 
 Context about an error pattern to avoid:
 - Common mistake: {what_was_wrong}
 - Correct approach: {what_should_be}
 
-Provide a detailed, accurate response to the user's question. Make sure your \
-answer is correct and specifically avoids the mistake pattern described above. \
-Include clear reasoning."""
+Give a short, accurate response to the user's question. Avoid the mistake \
+pattern above. Be direct — no filler, no caveats."""
 
 
 def generate_expert_demos(
@@ -86,7 +85,7 @@ def _generate_single_demo(
             {"role": "system", "content": system_content},
             {"role": "user", "content": prompt},
         ],
-        max_tokens=1024,
+        max_tokens=200,
         temperature=0.8,
     )
     return response.choices[0].message.content

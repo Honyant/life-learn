@@ -9,6 +9,10 @@ class PipelineConfig:
     model_name: str = "Qwen/Qwen2.5-7B-Instruct"
     openai_model: str = "gpt-4o-mini"
 
+    # When True, use the local model for correction detection and augmentation
+    # instead of GPT-4o-mini. Works better with larger models (7B+).
+    use_local_for_structured: bool = False
+
     # Paths — sdft_repo_path is the parent of this file's directory
     sdft_repo_path: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
     output_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent / "output")
