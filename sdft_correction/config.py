@@ -6,7 +6,7 @@ from pathlib import Path
 @dataclass
 class PipelineConfig:
     # Models
-    model_name: str = "Qwen/Qwen2.5-0.5B-Instruct"
+    model_name: str = "Qwen/Qwen2.5-7B-Instruct"
     openai_model: str = "gpt-4o-mini"
 
     # Paths — sdft_repo_path is the parent of this file's directory
@@ -18,13 +18,13 @@ class PipelineConfig:
     num_train_epochs: int = 2
     gradient_accumulation_steps: int = 8  # effective batch = 8
     max_prompt_length: int = 512
-    max_completion_length: int = 256
+    max_completion_length: int = 160
 
     # Augmentation & expert demos
     num_prompt_variations: int = 8
     num_expert_demos_per_prompt: int = 4
     # Total training pairs: (num_prompt_variations + 1) * num_expert_demos_per_prompt
-    # = 9 * 4 = 36  (small for 0.5B test; scale up for larger models)
+    # = 9 * 4 = 36
 
     # Inference
     max_new_tokens: int = 512
