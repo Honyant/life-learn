@@ -9,6 +9,7 @@ The training loop (inside DistilTrainer) works as follows for each batch:
   3. Minimise  KL( pi_theta(. | prompt)  ||  pi_EMA(. | teacher_prompt) )
   4. Teacher weights updated via EMA of student weights
 """
+import gc
 import os
 import sys
 from pathlib import Path
@@ -108,8 +109,17 @@ def run_sdft_training(
     trainer.model.save_pretrained(save_path)
     tokenizer.save_pretrained(save_path)
 
-    # Cleanup
+    # Cleanup — vLLM sleep mode allocates a persistent GPU memory pool that
+    # must be explicitly released before a new vLLM instance can be created
+    # in the same process, otherwise: "Sleep mode can only be used for one
+    # instance per process."
+    if hasattr(trainer, 'llm') and trainer.llm is not None:
+        llm_engine = getattr(trainer.llm, 'llm_engine', None)
+        if llm_engine is not None and hasattr(llm_engine, 'shutdown'):
+            llm_engine.shutdown()
+        del trainer.llm
     del trainer, model, teacher_model
+    gc.collect()
     torch.cuda.empty_cache()
 
     return save_path
