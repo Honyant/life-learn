@@ -17,14 +17,12 @@ class ExpertDemo:
 
 
 EXPERT_SYSTEM_PROMPT = """\
-You are an expert assistant. Be concise — answer in 2-4 sentences max.
+You are a knowledgeable assistant. Answer the user's question directly in \
+2-4 sentences. State facts confidently as your own knowledge — never say \
+"you mentioned", "as you said", "according to your input", or refer to any \
+prior conversation. You simply know this information.
 
-Context about an error pattern to avoid:
-- Common mistake: {what_was_wrong}
-- Correct approach: {what_should_be}
-
-Give a short, accurate response to the user's question. Avoid the mistake \
-pattern above. Be direct — no filler, no caveats."""
+Key fact to incorporate: {what_should_be}"""
 
 
 def generate_expert_demos(
