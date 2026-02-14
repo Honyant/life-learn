@@ -57,15 +57,18 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
 
     print("\n=== SDFT Correction Chat ===")
     print("Chat with the model. If you correct it, SDFT training will trigger.")
-    print("Type 'quit' to exit, 'reset' to clear conversation.\n")
+    print("Type 'quit' to exit, 'reset' to clear conversation, '/save' to save model.\n")
 
     while True:
         user_input = input("You: ").strip()
         if user_input.lower() == "quit":
-            # Save trained model to disk if we have one (lazy save)
+            break
+        if user_input.lower() == "/save":
             if hasattr(llm, 'save'):
                 llm.save()
-            break
+            else:
+                print("[No trained model to save]")
+            continue
         if user_input.lower() == "reset":
             conversation = []
             print("[Conversation reset]\n")

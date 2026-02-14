@@ -73,10 +73,9 @@ class TrainerInference:
         print(f"[Save complete]")
 
     def unload(self):
-        """Save model (if not yet saved), then clean up and free GPU memory."""
+        """Clean up and free GPU memory. Call /save first if you want to persist."""
         if self._trainer is None:
             return
-        self.save()
         if hasattr(self._trainer, 'ref_model'):
             del self._trainer.ref_model
         if hasattr(self._trainer, 'model'):
@@ -138,6 +137,7 @@ def run_sdft_training(
         max_prompt_length=max_prompt_length,
         max_completion_length=max_completion_length,
         num_train_epochs=num_train_epochs,
+        save_strategy="no",
         save_steps=9999,
         max_grad_norm=1.0,
         report_to="none",
