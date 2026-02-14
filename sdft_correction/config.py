@@ -22,7 +22,7 @@ class PipelineConfig:
     num_train_epochs: int = 2
     gradient_accumulation_steps: int = 8  # effective batch = 8
     max_prompt_length: int = 512
-    max_completion_length: int = 160
+    max_completion_length: int = 80
 
     # Augmentation & expert demos
     num_prompt_variations: int = 8
