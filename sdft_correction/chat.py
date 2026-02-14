@@ -8,15 +8,13 @@ Pipeline:
   5. GPT-4o-mini generates expert demonstrations             (API, no GPU)
   6. Data formatter builds the SDFT dataset
   7. DistilTrainer runs on-policy SDFT                       (GPU)
-  8. Trained model is loaded back for verification
+  8. Reuse trainer's vLLM for verification + continued chat
 
 Set config.use_local_for_structured=True to use the local model for steps 2-3
 instead of GPT-4o-mini. Works better with larger models (7B+).
 """
 import os
-import torch
 from pathlib import Path
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from sdft_correction.config import PipelineConfig
 from sdft_correction.inference import LocalInference, OpenAIInference
@@ -117,7 +115,7 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
 
                 # ── Phase 5: SDFT training (GPU) ──
                 print("[Starting SDFT training...]")
-                model_path = run_sdft_training(
+                model_path, llm = run_sdft_training(
                     dataset=dataset,
                     model_name=config.model_name,
                     output_dir=str(config.output_dir),
@@ -133,9 +131,7 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
                 # this checkpoint (continual learning, not from scratch).
                 config.model_name = model_path
 
-                # ── Phase 6: Verification ──
-                print("[Loading trained model for verification...]")
-                llm = _load_trained_model(model_path)
+                # ── Phase 6: Verification (reusing trainer's vLLM) ──
 
                 print("\n[VERIFICATION - fresh context, analogous question]")
                 verify_q = variations[0] if variations else original_question
@@ -170,22 +166,6 @@ def _find_original_question(conversation: list[dict]) -> str:
         return conversation[-3]["content"]
     return conversation[0]["content"]
 
-
-def _load_trained_model(model_path: str) -> LocalInference:
-    """Load a trained model into a LocalInference wrapper."""
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.bfloat16,
-        device_map="cuda",
-    )
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-
-    llm = LocalInference.__new__(LocalInference)
-    llm.device = "cuda"
-    llm.model = model
-    llm.tokenizer = tokenizer
-    llm.model.eval()
-    return llm
 
 
 def _load_env(config: PipelineConfig):

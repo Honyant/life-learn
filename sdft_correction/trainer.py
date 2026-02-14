@@ -26,6 +26,57 @@ from distil_config import DistilConfig  # noqa: E402
 from distil_trainer import DistilTrainer  # noqa: E402
 
 
+class VLLMInference:
+    """Wraps a DistilTrainer's vLLM instance for chat inference.
+
+    Reuses the already-loaded vLLM engine after training completes,
+    avoiding the cost of loading the model from disk again.
+    """
+
+    def __init__(self, trainer: DistilTrainer, tokenizer):
+        self._trainer = trainer
+        self.tokenizer = tokenizer
+        self.device = "cuda"
+
+    def generate(
+        self,
+        messages: list[dict[str, str]],
+        max_new_tokens: int = 512,
+        temperature: float = 0.7,
+        do_sample: bool = True,
+    ) -> str:
+        """Generate a completion using the trainer's vLLM engine."""
+        from vllm import SamplingParams
+
+        text = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        params = SamplingParams(
+            max_tokens=max_new_tokens,
+            temperature=temperature if do_sample else 0.0,
+        )
+        outputs = self._trainer.llm.generate([text], params)
+        return outputs[0].outputs[0].text
+
+    def unload(self):
+        """Clean up the trainer's vLLM engine and free GPU memory."""
+        if self._trainer is None:
+            return
+        if hasattr(self._trainer, 'llm') and self._trainer.llm is not None:
+            llm_engine = getattr(self._trainer.llm, 'llm_engine', None)
+            if llm_engine is not None and hasattr(llm_engine, 'shutdown'):
+                llm_engine.shutdown()
+            del self._trainer.llm
+        if hasattr(self._trainer, 'ref_model'):
+            del self._trainer.ref_model
+        if hasattr(self._trainer, 'model'):
+            del self._trainer.model
+        del self._trainer
+        self._trainer = None
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
 def run_sdft_training(
     dataset: Dataset,
     model_name: str = "Qwen/Qwen2.5-0.5B-Instruct",
@@ -35,10 +86,12 @@ def run_sdft_training(
     gradient_accumulation_steps: int = 8,
     max_prompt_length: int = 512,
     max_completion_length: int = 256,
-) -> str:
+) -> tuple[str, VLLMInference]:
     """Run SDFT training on a correction dataset.
 
-    Returns path to the saved model/adapter directory.
+    Returns (save_path, vllm_inference) — the saved model path and a
+    VLLMInference wrapper that reuses the trainer's vLLM for immediate
+    inference without reloading from disk.
     """
     if output_dir is None:
         output_dir = str(Path(__file__).resolve().parent / "output")
@@ -109,17 +162,6 @@ def run_sdft_training(
     trainer.model.save_pretrained(save_path)
     tokenizer.save_pretrained(save_path)
 
-    # Cleanup — vLLM sleep mode allocates a persistent GPU memory pool that
-    # must be explicitly released before a new vLLM instance can be created
-    # in the same process, otherwise: "Sleep mode can only be used for one
-    # instance per process."
-    if hasattr(trainer, 'llm') and trainer.llm is not None:
-        llm_engine = getattr(trainer.llm, 'llm_engine', None)
-        if llm_engine is not None and hasattr(llm_engine, 'shutdown'):
-            llm_engine.shutdown()
-        del trainer.llm
-    del trainer, model, teacher_model
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    return save_path
+    # Return the trainer wrapped for inference — caller owns cleanup via .unload()
+    vllm_llm = VLLMInference(trainer, tokenizer)
+    return save_path, vllm_llm
