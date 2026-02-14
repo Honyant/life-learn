@@ -139,6 +139,7 @@ def run_sdft_training(
         # SDFT-specific (on-policy, forward KL — matching reference main.py)
         # alpha=0.0 is forward KL; alpha=1.0 is reverse KL.
         # The reference implementation uses the default (0.0 = forward KL).
+        num_generations=1,            # One rollout per prompt (distillation, not RL)
         generate_from_teacher=False,  # Student generates on-policy rollouts
         sync_ref_model=True,  # EMA teacher updates
         ref_model_sync_steps=1,
