@@ -104,7 +104,10 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
                     tag = "ORIGINAL" if i == 0 else f"VAR {i}"
                     print(f"  [{tag}] {p}")
 
-                # ── Phase 2: Free GPU ──
+                # ── Phase 2: Free GPU (keep model for continual learning) ──
+                existing_model, existing_tokenizer = None, None
+                if hasattr(llm, 'extract_model_and_tokenizer'):
+                    existing_model, existing_tokenizer = llm.extract_model_and_tokenizer()
                 print("[Unloading inference model...]")
                 llm.unload()
 
@@ -138,14 +141,15 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
                     gradient_accumulation_steps=config.gradient_accumulation_steps,
                     max_prompt_length=config.max_prompt_length,
                     max_completion_length=config.max_completion_length,
+                    existing_model=existing_model,
+                    existing_tokenizer=existing_tokenizer,
                 )
-                print(f"[Training complete. Model saved to {model_path}]")
+                print(f"[Training complete]")
 
-                # Update model_name so the next correction trains from
-                # this checkpoint (continual learning, not from scratch).
-                config.model_name = model_path
+                # Continual learning is handled via extract_model_and_tokenizer()
+                # — no need to update config.model_name or save to disk.
 
-                # ── Phase 6: Verification (reusing trainer's vLLM) ──
+                # ── Phase 6: Verification ──
 
                 print("\n[VERIFICATION - fresh context, analogous question]")
                 verify_q = variations[0] if variations else original_question

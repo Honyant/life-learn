@@ -9,6 +9,7 @@ The training loop (inside DistilTrainer) works as follows for each batch:
   3. Minimise  KL( pi_theta(. | prompt)  ||  pi_EMA(. | teacher_prompt) )
   4. Teacher weights updated via EMA of student weights
 """
+import copy
 import gc
 import os
 import sys
@@ -73,13 +74,24 @@ class TrainerInference:
         self._saved = True
         print(f"[Save complete]")
 
+    def extract_model_and_tokenizer(self):
+        """Return (model, tokenizer) and detach them so unload() won't destroy them.
+
+        Used for continual learning: pass the model to the next training run.
+        """
+        model = self._trainer.model
+        tokenizer = self.tokenizer
+        # Detach so unload doesn't delete the model
+        self._trainer.model = None
+        return model, tokenizer
+
     def unload(self):
         """Clean up and free GPU memory. Call /save first if you want to persist."""
         if self._trainer is None:
             return
-        if hasattr(self._trainer, 'ref_model'):
+        if hasattr(self._trainer, 'ref_model') and self._trainer.ref_model is not None:
             del self._trainer.ref_model
-        if hasattr(self._trainer, 'model'):
+        if hasattr(self._trainer, 'model') and self._trainer.model is not None:
             del self._trainer.model
         del self._trainer
         self._trainer = None
@@ -96,8 +108,13 @@ def run_sdft_training(
     gradient_accumulation_steps: int = 8,
     max_prompt_length: int = 512,
     max_completion_length: int = 256,
+    existing_model=None,
+    existing_tokenizer=None,
 ) -> tuple[str, TrainerInference]:
     """Run SDFT training on a correction dataset.
+
+    Pass existing_model/existing_tokenizer for continual learning (avoids
+    saving/loading from disk between corrections).
 
     Returns (save_path, trainer_inference) — the saved model path and a
     TrainerInference wrapper for immediate inference without reloading.
@@ -108,15 +125,23 @@ def run_sdft_training(
     os.makedirs(output_dir, exist_ok=True)
 
     # ── Load student and teacher (same architecture, same init weights) ──
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.bfloat16,
-    )
-    teacher_model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype=torch.bfloat16,
-    )
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    if existing_model is not None:
+        print("[Continual learning: reusing in-memory model]")
+        model = existing_model
+        model.train()
+        # Deep copy for teacher — same weights, separate parameters
+        teacher_model = copy.deepcopy(existing_model)
+        tokenizer = existing_tokenizer or AutoTokenizer.from_pretrained(model_name)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+        )
+        teacher_model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     # ── DistilConfig — no vLLM, HF generate for on-policy rollouts ──
     # For small training runs (< 20 samples), HF generate is faster than
