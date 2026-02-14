@@ -45,6 +45,7 @@ class LocalInference:
                 max_new_tokens=max_new_tokens,
                 temperature=temperature if do_sample else 1.0,
                 do_sample=do_sample,
+                repetition_penalty=1.3,
             )
         new_tokens = output_ids[0][inputs["input_ids"].shape[1] :]
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True)

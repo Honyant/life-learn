@@ -18,7 +18,7 @@ class PipelineConfig:
     output_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent / "output")
 
     # SDFT training (no LoRA — full fine-tuning, matching the paper)
-    learning_rate: float = 5e-5
+    learning_rate: float = 5e-6
     num_train_epochs: int = 4
     gradient_accumulation_steps: int = 1  # effective batch = 4
     max_prompt_length: int = 512
@@ -31,5 +31,5 @@ class PipelineConfig:
     # = 5 * 2 = 10
 
     # Inference
-    max_new_tokens: int = 512
+    max_new_tokens: int = 150
     temperature: float = 0.7
