@@ -26,11 +26,10 @@ from distil_config import DistilConfig  # noqa: E402
 from distil_trainer import DistilTrainer  # noqa: E402
 
 
-class VLLMInference:
-    """Wraps a DistilTrainer's vLLM instance for chat inference.
+class TrainerInference:
+    """Wraps the trainer's HF model for chat inference after training.
 
-    Reuses the already-loaded vLLM engine after training completes,
-    avoiding the cost of loading the model from disk again.
+    Reuses the already-loaded model on GPU — no reloading from disk.
     """
 
     def __init__(self, trainer: DistilTrainer, tokenizer, save_path: str):
@@ -39,6 +38,7 @@ class VLLMInference:
         self.device = "cuda"
         self._save_path = save_path
         self._saved = False
+        self._trainer.model.eval()
 
     def generate(
         self,
@@ -47,18 +47,20 @@ class VLLMInference:
         temperature: float = 0.7,
         do_sample: bool = True,
     ) -> str:
-        """Generate a completion using the trainer's vLLM engine."""
-        from vllm import SamplingParams
-
+        """Generate a completion using the trainer's HF model directly."""
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        params = SamplingParams(
-            max_tokens=max_new_tokens,
-            temperature=temperature if do_sample else 0.0,
-        )
-        outputs = self._trainer.llm.generate([text], params)
-        return outputs[0].outputs[0].text
+        inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            output_ids = self._trainer.model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature if do_sample else 1.0,
+                do_sample=do_sample,
+            )
+        new_tokens = output_ids[0][inputs["input_ids"].shape[1]:]
+        return self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
     def save(self):
         """Save the trained model to disk (called lazily before cleanup)."""
@@ -75,11 +77,6 @@ class VLLMInference:
         if self._trainer is None:
             return
         self.save()
-        if hasattr(self._trainer, 'llm') and self._trainer.llm is not None:
-            llm_engine = getattr(self._trainer.llm, 'llm_engine', None)
-            if llm_engine is not None and hasattr(llm_engine, 'shutdown'):
-                llm_engine.shutdown()
-            del self._trainer.llm
         if hasattr(self._trainer, 'ref_model'):
             del self._trainer.ref_model
         if hasattr(self._trainer, 'model'):
@@ -99,12 +96,11 @@ def run_sdft_training(
     gradient_accumulation_steps: int = 8,
     max_prompt_length: int = 512,
     max_completion_length: int = 256,
-) -> tuple[str, VLLMInference]:
+) -> tuple[str, TrainerInference]:
     """Run SDFT training on a correction dataset.
 
-    Returns (save_path, vllm_inference) — the saved model path and a
-    VLLMInference wrapper that reuses the trainer's vLLM for immediate
-    inference without reloading from disk.
+    Returns (save_path, trainer_inference) — the saved model path and a
+    TrainerInference wrapper for immediate inference without reloading.
     """
     if output_dir is None:
         output_dir = str(Path(__file__).resolve().parent / "output")
@@ -122,16 +118,13 @@ def run_sdft_training(
     )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    # ── DistilConfig — mirrors main.py in the Self-Distillation repo ──
+    # ── DistilConfig — no vLLM, HF generate for on-policy rollouts ──
+    # For small training runs (< 20 samples), HF generate is faster than
+    # vLLM due to vLLM's init + CUDA graph compilation overhead.
     config = DistilConfig(
         output_dir=output_dir,
         seed=42,
-        # vLLM for on-policy student generation
-        use_vllm=True,
-        vllm_mode="colocate",
-        vllm_tensor_parallel_size=1,
-        vllm_gpu_memory_utilization=0.3,
-        vllm_enable_sleep_mode=True,
+        use_vllm=False,
         # Optimiser
         learning_rate=learning_rate,
         warmup_ratio=0.1,
@@ -150,14 +143,11 @@ def run_sdft_training(
         report_to="none",
         log_completions=True,
         # SDFT-specific (on-policy, forward KL — matching reference main.py)
-        # alpha=0.0 is forward KL; alpha=1.0 is reverse KL.
-        # The reference implementation uses the default (0.0 = forward KL).
         num_generations=1,            # One rollout per prompt (distillation, not RL)
         generate_from_teacher=False,  # Student generates on-policy rollouts
         sync_ref_model=True,  # EMA teacher updates
         ref_model_sync_steps=1,
         ref_model_mixup_alpha=0.01,  # EMA rate alpha
-        vllm_importance_sampling_correction=True,  # Correct vLLM/train mismatch
         num_loss_tokens_to_skip=3,  # Suppress teacher artifacts (Section 6)
     )
 
@@ -171,9 +161,8 @@ def run_sdft_training(
 
     trainer.train()
 
-    # Don't save now — VLLMInference.save() will do it lazily on unload()
-    # (before next training run or on quit), so inference starts instantly.
+    # Don't save now — TrainerInference.save() does it lazily on unload/quit
     save_path = os.path.join(output_dir, "trained_model")
 
-    vllm_llm = VLLMInference(trainer, tokenizer, save_path)
-    return save_path, vllm_llm
+    llm = TrainerInference(trainer, tokenizer, save_path)
+    return save_path, llm
