@@ -33,6 +33,14 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
     # Load the .env file if it exists (for OPENAI_API_KEY)
     _load_env(config)
 
+    # Check if a previously trained model exists — resume from it
+    trained_path = config.output_dir / "trained_model"
+    if trained_path.is_dir() and (trained_path / "config.json").exists():
+        print(f"[Found trained model at {trained_path}, resuming from checkpoint]")
+        config.model_name = str(trained_path)
+    else:
+        print(f"[No trained model found, starting from {config.model_name}]")
+
     print("Loading model for chat...")
     llm = LocalInference(config.model_name)
 
