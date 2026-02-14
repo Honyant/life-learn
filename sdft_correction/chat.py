@@ -62,6 +62,9 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
     while True:
         user_input = input("You: ").strip()
         if user_input.lower() == "quit":
+            # Save trained model to disk if we have one (lazy save)
+            if hasattr(llm, 'save'):
+                llm.save()
             break
         if user_input.lower() == "reset":
             conversation = []

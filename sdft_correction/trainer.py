@@ -12,7 +12,6 @@ The training loop (inside DistilTrainer) works as follows for each batch:
 import gc
 import os
 import sys
-import threading
 from pathlib import Path
 
 import torch
@@ -34,10 +33,12 @@ class VLLMInference:
     avoiding the cost of loading the model from disk again.
     """
 
-    def __init__(self, trainer: DistilTrainer, tokenizer):
+    def __init__(self, trainer: DistilTrainer, tokenizer, save_path: str):
         self._trainer = trainer
         self.tokenizer = tokenizer
         self.device = "cuda"
+        self._save_path = save_path
+        self._saved = False
 
     def generate(
         self,
@@ -59,14 +60,21 @@ class VLLMInference:
         outputs = self._trainer.llm.generate([text], params)
         return outputs[0].outputs[0].text
 
+    def save(self):
+        """Save the trained model to disk (called lazily before cleanup)."""
+        if self._saved or self._trainer is None:
+            return
+        print(f"[Saving model to {self._save_path}...]")
+        self._trainer.model.save_pretrained(self._save_path)
+        self.tokenizer.save_pretrained(self._save_path)
+        self._saved = True
+        print(f"[Save complete]")
+
     def unload(self):
-        """Clean up the trainer's vLLM engine and free GPU memory."""
+        """Save model (if not yet saved), then clean up and free GPU memory."""
         if self._trainer is None:
             return
-        # Wait for background save to finish before destroying the model
-        if hasattr(self, '_save_thread') and self._save_thread is not None:
-            self._save_thread.join()
-            self._save_thread = None
+        self.save()
         if hasattr(self._trainer, 'llm') and self._trainer.llm is not None:
             llm_engine = getattr(self._trainer.llm, 'llm_engine', None)
             if llm_engine is not None and hasattr(llm_engine, 'shutdown'):
@@ -163,18 +171,9 @@ def run_sdft_training(
 
     trainer.train()
 
-    # Save the trained model in background while we return vLLM for inference
+    # Don't save now — VLLMInference.save() will do it lazily on unload()
+    # (before next training run or on quit), so inference starts instantly.
     save_path = os.path.join(output_dir, "trained_model")
 
-    def _save_in_background():
-        trainer.model.save_pretrained(save_path)
-        tokenizer.save_pretrained(save_path)
-        print(f"[Background save complete: {save_path}]")
-
-    save_thread = threading.Thread(target=_save_in_background, daemon=True)
-    save_thread.start()
-
-    # Return the trainer wrapped for inference — caller owns cleanup via .unload()
-    vllm_llm = VLLMInference(trainer, tokenizer)
-    vllm_llm._save_thread = save_thread  # keep reference so caller can wait if needed
+    vllm_llm = VLLMInference(trainer, tokenizer, save_path)
     return save_path, vllm_llm
