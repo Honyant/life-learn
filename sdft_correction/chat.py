@@ -88,6 +88,9 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
                 )
                 all_prompts = [original_question] + variations
                 print(f"[Got {len(all_prompts)} prompts]")
+                for i, p in enumerate(all_prompts):
+                    tag = "ORIGINAL" if i == 0 else f"VAR {i}"
+                    print(f"  [{tag}] {p}")
 
                 # ── Phase 2: Free GPU ──
                 print("[Unloading inference model...]")
@@ -104,6 +107,9 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
                     model=config.openai_model,
                 )
                 print(f"[Generated {len(expert_demo_list)} expert demonstrations]")
+                for i, demo in enumerate(expert_demo_list):
+                    print(f"  [DEMO {i+1}] Q: {demo.prompt[:80]}...")
+                    print(f"           A: {demo.demonstration[:120]}...")
 
                 # ── Phase 4: Format dataset ──
                 dataset = format_for_sdft(expert_demo_list)
