@@ -9,14 +9,15 @@ import re
 
 AUGMENTATION_SYSTEM_PROMPT = """\
 You are a training data generator. Given a correction a user made to an AI \
-assistant, generate diverse question prompts that test the same underlying \
-reasoning or knowledge pattern.
+assistant, generate diverse question prompts that test the SAME specific \
+knowledge or reasoning that was corrected.
 
 Each question should:
-1. Be in a DIFFERENT domain or scenario from all others and the original
-2. Require the same underlying reasoning pattern or knowledge type that was corrected
+1. Test the same specific fact, concept, or reasoning pattern that was corrected
+2. Be phrased differently from the original and from each other — use \
+rephrasings, follow-up angles, related sub-questions, or "what if" framings
 3. Be a natural, standalone question a user might ask
-4. NOT reference the original scenario directly
+4. Stay in the same or a closely related domain — do NOT jump to unrelated topics
 
 Generate exactly {n} questions. Output ONLY a JSON array of strings, no other text."""
 

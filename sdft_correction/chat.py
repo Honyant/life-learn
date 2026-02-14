@@ -115,6 +115,10 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
                 )
                 print(f"[Training complete. Model saved to {model_path}]")
 
+                # Update model_name so the next correction trains from
+                # this checkpoint (continual learning, not from scratch).
+                config.model_name = model_path
+
                 # ── Phase 6: Verification ──
                 print("[Loading trained model for verification...]")
                 llm = _load_trained_model(model_path)
