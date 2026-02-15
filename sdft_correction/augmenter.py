@@ -9,18 +9,27 @@ import re
 
 AUGMENTATION_SYSTEM_PROMPT = """\
 You are a training data generator. Given a correction a user made to an AI \
-assistant, generate diverse SHORT question prompts that test the SAME specific \
-knowledge that was corrected.
+assistant, generate diverse prompts that would REQUIRE the corrected behavior.
 
-Each question should:
-1. Be a simple, direct question that can be answered in 1-3 sentences
-2. Test the same specific fact or knowledge that was corrected
-3. Be phrased differently from the original and from each other — simple \
-rephrasings, yes/no framings, "how much" / "what is" style questions
-4. Stay in the same domain — do NOT generate open-ended or analytical questions
-5. Do NOT ask "how does X inform Y" or "analyze" or "discuss" style questions
+CRITICAL: Generate prompts similar to what the ORIGINAL USER would say — \
+requests, questions, or instructions that would trigger the same situation. \
+Do NOT generate meta-questions ABOUT the correction (e.g. "Should X be done?" \
+or "What format should be used for X?"). Instead generate prompts where the \
+model must DEMONSTRATE the corrected behavior in its response.
 
-Generate exactly {n} questions. Output ONLY a JSON array of strings, no other text."""
+Examples:
+- If correction is "write poems in uppercase" → generate poem requests like \
+"Write a poem about the ocean", "Can you compose a verse about winter?"
+- If correction is "the year is 2026" → generate questions like \
+"What year comes after 2025?", "What year is it right now?"
+
+Each prompt should:
+1. Be a natural user request/question similar to the original
+2. Require the model to demonstrate the corrected behavior in its response
+3. Vary in topic/phrasing from each other
+4. Stay short and direct
+
+Generate exactly {n} prompts. Output ONLY a JSON array of strings, no other text."""
 
 
 def generate_prompt_variations(
@@ -38,8 +47,9 @@ def generate_prompt_variations(
 - What was wrong: {what_was_wrong}
 - Correct behavior: {what_should_be}
 
-Generate {n} diverse questions in different domains/scenarios that test the same \
-underlying reasoning or knowledge pattern."""
+Generate {n} prompts that a user might naturally say, where the model would \
+need to demonstrate the corrected behavior. Vary the topic but keep the same \
+type of request as the original."""
 
     messages = [
         {"role": "system", "content": AUGMENTATION_SYSTEM_PROMPT.format(n=n)},

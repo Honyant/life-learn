@@ -146,6 +146,14 @@ def run_sdft_training(
     # ── DistilConfig — no vLLM, HF generate for on-policy rollouts ──
     # For small training runs (< 20 samples), HF generate is faster than
     # vLLM due to vLLM's init + CUDA graph compilation overhead.
+    #
+    # steps_per_generation defaults to gradient_accumulation_steps, which
+    # sets generation_batch_size = per_device_bs * steps_per_generation.
+    # The RepeatSampler drops incomplete batches, so generation_batch_size
+    # must be <= len(dataset).  Force steps_per_generation=1 so it equals
+    # per_device_bs (4), which always fits small correction datasets.
+    per_device_bs = 4
+
     config = DistilConfig(
         output_dir=output_dir,
         seed=42,
@@ -158,8 +166,9 @@ def run_sdft_training(
         bf16=True,
         fp16=False,
         # Batch: effective batch = per_device * gradient_accumulation
-        per_device_train_batch_size=4,
+        per_device_train_batch_size=per_device_bs,
         gradient_accumulation_steps=gradient_accumulation_steps,
+        steps_per_generation=1,  # Generate every micro-batch (avoids empty sampler on small datasets)
         max_prompt_length=max_prompt_length,
         max_completion_length=max_completion_length,
         num_train_epochs=num_train_epochs,
@@ -171,10 +180,8 @@ def run_sdft_training(
         # SDFT-specific (on-policy, forward KL — matching reference main.py)
         num_generations=1,            # One rollout per prompt (distillation, not RL)
         generate_from_teacher=False,  # Student generates on-policy rollouts
-        sync_ref_model=True,  # EMA teacher updates
-        ref_model_sync_steps=1,
-        ref_model_mixup_alpha=0.01,  # EMA rate alpha
-        num_loss_tokens_to_skip=3,  # Suppress teacher artifacts (Section 6)
+        sync_ref_model=False,  # Frozen teacher — preserve in-context demo advantage
+        num_loss_tokens_to_skip=0,  # Was 3, but kills loss for short completions like "No."
     )
 
     trainer = DistilTrainer(
