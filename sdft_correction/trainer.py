@@ -1,6 +1,6 @@
 """Wraps the SDFT DistilTrainer for correction-based fine-tuning.
 
-No LoRA — full fine-tuning, matching the paper's experimental setup.
+Supports full fine-tuning (paper default), LoRA, and selective layer freezing.
 The training loop (inside DistilTrainer) works as follows for each batch:
 
   1. Student generates on-policy rollout   y ~ pi_theta(. | prompt)
@@ -53,8 +53,10 @@ class TrainerInference:
             messages, tokenize=False, add_generation_prompt=True
         )
         inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
+        # .generate() works on the underlying model; unwrap torch.compile if needed
+        gen_model = _unwrap_compiled(self._trainer.model)
         with torch.no_grad():
-            output_ids = self._trainer.model.generate(
+            output_ids = gen_model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature if do_sample else 1.0,
@@ -69,7 +71,8 @@ class TrainerInference:
         if self._saved or self._trainer is None:
             return
         print(f"[Saving model to {self._save_path}...]")
-        self._trainer.model.save_pretrained(self._save_path)
+        # Unwrap torch.compile wrapper before saving
+        _unwrap_compiled(self._trainer.model).save_pretrained(self._save_path)
         self.tokenizer.save_pretrained(self._save_path)
         self._saved = True
         print(f"[Save complete]")
@@ -99,6 +102,11 @@ class TrainerInference:
         torch.cuda.empty_cache()
 
 
+def _unwrap_compiled(model):
+    """Return the underlying model if torch.compiled, else return as-is."""
+    return getattr(model, "_orig_mod", model)
+
+
 def run_sdft_training(
     dataset: Dataset,
     model_name: str = "Qwen/Qwen2.5-0.5B-Instruct",
@@ -110,11 +118,28 @@ def run_sdft_training(
     max_completion_length: int = 256,
     existing_model=None,
     existing_tokenizer=None,
+    use_torch_compile: bool = False,
+    gradient_checkpointing: bool = True,
+    use_lora: bool = False,
+    lora_rank: int = 32,
+    lora_target_modules: list[str] | None = None,
+    freeze_layers: int = 0,
 ) -> tuple[str, TrainerInference]:
     """Run SDFT training on a correction dataset.
 
     Pass existing_model/existing_tokenizer for continual learning (avoids
     saving/loading from disk between corrections).
+
+    Args:
+        gradient_checkpointing: Recompute activations during backward to save
+            memory. Disable for ~30% backward speedup when VRAM is sufficient.
+        use_lora: Use LoRA adapters instead of full fine-tuning. Reduces
+            backward pass time by 60-80% and memory significantly.
+        lora_rank: LoRA adapter rank (default 32).
+        lora_target_modules: Which modules to attach LoRA to. Defaults to
+            ["q_proj", "k_proj", "v_proj", "o_proj"].
+        freeze_layers: Number of initial transformer layers to freeze
+            (0 = train all). Reduces backward compute proportionally.
 
     Returns (save_path, trainer_inference) — the saved model path and a
     TrainerInference wrapper for immediate inference without reloading.
@@ -127,10 +152,16 @@ def run_sdft_training(
     # ── Load student and teacher (same architecture, same init weights) ──
     if existing_model is not None:
         print("[Continual learning: reusing in-memory model]")
-        model = existing_model
+        model = _unwrap_compiled(existing_model)
         model.train()
+        # Re-enable gradients (may have been disabled during eval/inference)
+        for p in model.parameters():
+            p.requires_grad_(True)
+        # Reset gradient checkpointing so it re-initializes cleanly
+        if hasattr(model, "gradient_checkpointing_disable"):
+            model.gradient_checkpointing_disable()
         # Deep copy for teacher — same weights, separate parameters
-        teacher_model = copy.deepcopy(existing_model)
+        teacher_model = copy.deepcopy(model)
         tokenizer = existing_tokenizer or AutoTokenizer.from_pretrained(model_name)
     else:
         model = AutoModelForCausalLM.from_pretrained(
@@ -143,9 +174,58 @@ def run_sdft_training(
         )
         tokenizer = AutoTokenizer.from_pretrained(model_name)
 
+    # ── Selective layer freezing ──
+    if freeze_layers > 0:
+        frozen = 0
+        # Freeze embedding layer
+        for p in model.model.embed_tokens.parameters():
+            p.requires_grad_(False)
+            frozen += p.numel()
+        # Freeze first N transformer layers
+        for i, layer in enumerate(model.model.layers):
+            if i < freeze_layers:
+                for p in layer.parameters():
+                    p.requires_grad_(False)
+                    frozen += p.numel()
+        total = sum(p.numel() for p in model.parameters())
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"[Layer freezing: frozen {freeze_layers} layers + embeddings, "
+              f"{trainable:,}/{total:,} params trainable ({trainable/total*100:.1f}%)]")
+
+    # ── LoRA adapters ──
+    if use_lora:
+        from peft import LoraConfig, get_peft_model
+
+        if lora_target_modules is None:
+            lora_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
+
+        lora_config = LoraConfig(
+            r=lora_rank,
+            lora_alpha=lora_rank * 2,
+            target_modules=lora_target_modules,
+            lora_dropout=0.0,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, lora_config)
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total = sum(p.numel() for p in model.parameters())
+        print(f"[LoRA: rank={lora_rank}, {trainable:,}/{total:,} params trainable "
+              f"({trainable/total*100:.2f}%)]")
+
+    # ── Compile teacher model for faster forward passes ──
+    if use_torch_compile and torch.cuda.is_available():
+        print("[Compiling teacher model with torch.compile...]")
+        teacher_model = torch.compile(teacher_model, mode="default")
+
     # ── DistilConfig — no vLLM, HF generate for on-policy rollouts ──
-    # For small training runs (< 20 samples), HF generate is faster than
-    # vLLM due to vLLM's init + CUDA graph compilation overhead.
+    compile_kwargs = {}
+    if use_torch_compile and torch.cuda.is_available():
+        compile_kwargs = {
+            "torch_compile": True,
+            "torch_compile_mode": "default",
+        }
+
     config = DistilConfig(
         output_dir=output_dir,
         seed=42,
@@ -168,13 +248,16 @@ def run_sdft_training(
         max_grad_norm=1.0,
         report_to="none",
         log_completions=True,
+        gradient_checkpointing=gradient_checkpointing,
         # SDFT-specific (on-policy, forward KL — matching reference main.py)
         num_generations=1,            # One rollout per prompt (distillation, not RL)
         generate_from_teacher=False,  # Student generates on-policy rollouts
-        sync_ref_model=True,  # EMA teacher updates
+        # EMA teacher: disabled for LoRA (base weights frozen, nothing to sync)
+        sync_ref_model=not use_lora,
         ref_model_sync_steps=1,
         ref_model_mixup_alpha=0.01,  # EMA rate alpha
         num_loss_tokens_to_skip=3,  # Suppress teacher artifacts (Section 6)
+        **compile_kwargs,
     )
 
     trainer = DistilTrainer(

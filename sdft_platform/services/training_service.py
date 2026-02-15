@@ -177,6 +177,10 @@ class TrainingCoordinator:
             base_model_name = self.model_runtime.resolve_model_name(db, org.id)
             train_output_dir = str(version_dir)
 
+            # Reuse in-memory model from the runtime cache when available
+            # (continual learning — avoids reloading from disk between jobs).
+            existing_model, existing_tokenizer = self.model_runtime.extract_cached_model(org.id)
+
             _, trained_runtime = run_sdft_training(
                 dataset=dataset,
                 model_name=base_model_name,
@@ -186,9 +190,19 @@ class TrainingCoordinator:
                 gradient_accumulation_steps=self.settings.train_gradient_accumulation_steps,
                 max_prompt_length=self.settings.train_max_prompt_length,
                 max_completion_length=self.settings.train_max_completion_length,
+                existing_model=existing_model,
+                existing_tokenizer=existing_tokenizer,
+                gradient_checkpointing=self.settings.train_gradient_checkpointing,
+                use_lora=self.settings.train_use_lora,
+                lora_rank=self.settings.train_lora_rank,
+                freeze_layers=self.settings.train_freeze_layers,
             )
+            # Save to disk for persistence, then promote into runtime cache
+            # so inference and future training reuse the in-memory model.
             trained_runtime.save()
-            trained_runtime.unload()
+            self.model_runtime.promote_trained_runtime(
+                org.id, trained_runtime, str(save_path),
+            )
 
             previous_active_id = org.active_model_version_id
             org.active_model_version_id = new_model_version.id
@@ -219,7 +233,8 @@ class TrainingCoordinator:
             )
             db.commit()
 
-            self.model_runtime.invalidate_org(org.id)
+            # No invalidate_org needed — promote_trained_runtime already
+            # installed the trained model as the org's inference runtime.
 
     def _mark_job_failed(self, job_id: int, error: str) -> None:
         trimmed_error = error[-6000:]

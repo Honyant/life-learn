@@ -69,6 +69,10 @@ class MockInference:
 class RuntimeEntry:
     model_name: str
     inference: object
+    # For continual learning: raw model + tokenizer kept in GPU memory
+    # so the next training job can reuse them without loading from disk.
+    _cached_model: object = None
+    _cached_tokenizer: object = None
 
 
 class OrgModelRuntime:
@@ -120,6 +124,49 @@ class OrgModelRuntime:
 
             self._entries[org_id] = RuntimeEntry(model_name=model_name, inference=inference)
             return inference
+
+    def promote_trained_runtime(self, org_id: int, trained_runtime, model_path: str) -> None:
+        """Replace org's inference runtime with a freshly-trained model.
+
+        Instead of saving → unloading → reloading from disk, this hands
+        the in-memory TrainerInference directly to the runtime cache.
+        Also extracts model + tokenizer for reuse by the next training job
+        (continual learning without disk I/O).
+        """
+        with self._lock:
+            old = self._entries.pop(org_id, None)
+
+        if old is not None:
+            try:
+                old.inference.unload()
+            except Exception:
+                pass
+
+        # Extract raw model + tokenizer before wrapping as inference
+        model, tokenizer = trained_runtime.extract_model_and_tokenizer()
+
+        # Build a lightweight inference wrapper from the in-memory model
+        from sdft_correction.inference import LocalInference
+
+        inference = LocalInference.from_pretrained_model(model, tokenizer)
+
+        entry = RuntimeEntry(model_name=model_path, inference=inference)
+        entry._cached_model = model
+        entry._cached_tokenizer = tokenizer
+
+        with self._lock:
+            self._entries[org_id] = entry
+
+    def extract_cached_model(self, org_id: int):
+        """Return (model, tokenizer) from the runtime cache for continual learning.
+
+        Returns (None, None) if no cached model is available.
+        """
+        with self._lock:
+            entry = self._entries.get(org_id)
+            if entry is not None and entry._cached_model is not None:
+                return entry._cached_model, entry._cached_tokenizer
+        return None, None
 
     def generate(
         self,

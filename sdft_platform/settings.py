@@ -43,6 +43,10 @@ class Settings:
     train_gradient_accumulation_steps: int = int(os.getenv("LL_TRAIN_GRAD_ACC", "1"))
     train_max_prompt_length: int = int(os.getenv("LL_TRAIN_MAX_PROMPT_LEN", "512"))
     train_max_completion_length: int = int(os.getenv("LL_TRAIN_MAX_COMPLETION_LEN", "80"))
+    train_gradient_checkpointing: bool = _as_bool(os.getenv("LL_TRAIN_GRAD_CKPT"), default=False)
+    train_use_lora: bool = _as_bool(os.getenv("LL_TRAIN_USE_LORA"), default=False)
+    train_lora_rank: int = int(os.getenv("LL_TRAIN_LORA_RANK", "32"))
+    train_freeze_layers: int = int(os.getenv("LL_TRAIN_FREEZE_LAYERS", "0"))
     num_prompt_variations: int = int(os.getenv("LL_PROMPT_VARIATIONS", "4"))
     num_expert_demos_per_prompt: int = int(os.getenv("LL_EXPERT_DEMOS_PER_PROMPT", "2"))
 

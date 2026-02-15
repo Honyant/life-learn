@@ -17,12 +17,20 @@ class PipelineConfig:
     sdft_repo_path: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
     output_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent / "output")
 
-    # SDFT training (no LoRA — full fine-tuning, matching the paper)
+    # SDFT training
     learning_rate: float = 1e-5
     num_train_epochs: int = 8
     gradient_accumulation_steps: int = 1  # effective batch = 4
     max_prompt_length: int = 512
     max_completion_length: int = 80
+    gradient_checkpointing: bool = False  # OFF for speed (84% faster); enable for large models
+
+    # LoRA (set use_lora=True for 60-80% less memory, good for 7B+)
+    use_lora: bool = False
+    lora_rank: int = 32
+
+    # Layer freezing (0 = train all layers)
+    freeze_layers: int = 0
 
     # Augmentation & expert demos
     num_prompt_variations: int = 4

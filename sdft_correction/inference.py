@@ -24,6 +24,16 @@ class LocalInference:
         )
         self.model.eval()
 
+    @classmethod
+    def from_pretrained_model(cls, model, tokenizer, device: str = "cuda"):
+        """Wrap an already-loaded model and tokenizer (no disk I/O)."""
+        instance = cls.__new__(cls)
+        instance.model = model
+        instance.tokenizer = tokenizer
+        instance.device = device
+        instance.model.eval()
+        return instance
+
     def generate(
         self,
         messages: list[dict[str, str]],

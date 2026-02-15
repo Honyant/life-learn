@@ -143,6 +143,10 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
                     max_completion_length=config.max_completion_length,
                     existing_model=existing_model,
                     existing_tokenizer=existing_tokenizer,
+                    gradient_checkpointing=config.gradient_checkpointing,
+                    use_lora=config.use_lora,
+                    lora_rank=config.lora_rank,
+                    freeze_layers=config.freeze_layers,
                 )
                 print(f"[Training complete]")
 
