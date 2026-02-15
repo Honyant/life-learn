@@ -15,7 +15,7 @@ flashinfer-python==0.5.3
 wandb==0.22.2
 pandas==2.3.3
 deepspeed==0.18.4
-fastapi==0.115.11
+fastapi==0.129.0
 uvicorn==0.34.0
 sqlalchemy==2.0.38
 jinja2==3.1.6
