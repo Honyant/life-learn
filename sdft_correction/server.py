@@ -2,6 +2,7 @@
 
 Single-user server: one GPU, global state, multiple chat sessions.
 Chat history persisted to SQLite via db.py.
+Correction detection runs in the background (non-blocking).
 Run with: uvicorn sdft_correction.server:app --host 0.0.0.0 --port 8000
 """
 import asyncio
@@ -35,11 +36,108 @@ training_thread: threading.Thread | None = None
 training_result: dict = {}
 chat_callback: ChatCallback | None = None
 
+# Non-blocking correction detection state
+_inference_lock = None  # created in lifespan (needs running loop)
+_correction_pending = False
+_correction_message: str | None = None
+
+
+async def _check_correction_background(chat_id: str, conversation: list):
+    """Run correction detection + training setup without blocking the chat response."""
+    global llm, smart_llm, training_thread, training_result, chat_callback
+    global _correction_pending, _correction_message
+
+    try:
+        if training_thread is not None:
+            return
+
+        result = await asyncio.to_thread(detect_correction, conversation, smart_llm)
+
+        if not result.is_correction:
+            return
+
+        original_question = _find_original_question(conversation)
+
+        variations = await asyncio.to_thread(
+            generate_prompt_variations,
+            what_was_wrong=result.what_was_wrong,
+            what_should_be=result.what_should_be,
+            original_question=original_question,
+            original_wrong_response=result.original_model_response,
+            llm=smart_llm,
+            n=config.num_prompt_variations,
+        )
+        all_prompts = [original_question] + variations
+
+        # Acquire lock so we don't swap the model while another request
+        # is mid-generation.  The swap itself is fast (no await inside).
+        async with _inference_lock:
+            if training_thread is not None:
+                return  # training started while we were checking
+
+            existing_model, existing_tokenizer = None, None
+            if hasattr(llm, "extract_model_and_tokenizer"):
+                existing_model, existing_tokenizer = llm.extract_model_and_tokenizer()
+            tokenizer = existing_tokenizer or getattr(llm, "tokenizer", None)
+            llm.unload()
+
+            chat_cb = ChatCallback(
+                tokenizer=tokenizer,
+                max_new_tokens=config.max_new_tokens,
+                temperature=config.temperature,
+            )
+            chat_cb.training_phase = "preparing"
+            chat_callback = chat_cb
+            llm = chat_cb
+            if config.use_local_for_structured:
+                smart_llm = llm
+
+            training_result = {}
+            training_thread = threading.Thread(
+                target=_run_training_in_background,
+                args=(
+                    all_prompts,
+                    result.what_was_wrong,
+                    result.what_should_be,
+                    config,
+                    existing_model,
+                    existing_tokenizer,
+                    chat_cb,
+                    training_result,
+                ),
+                daemon=True,
+            )
+            training_thread.start()
+
+        db.reset_context(chat_id)
+        _correction_message = (
+            f"Correction detected! Training started with {len(all_prompts)} prompts. "
+            f"You can keep chatting (responses will be slower during training)."
+        )
+    except Exception as e:
+        print(f"[correction-bg] error: {e}")
+    finally:
+        _correction_pending = False
+
+
+def _collect_finished_training():
+    """Swap in the trained model if background training just finished."""
+    global llm, smart_llm, training_thread, training_result, chat_callback
+    if training_thread is not None and not training_thread.is_alive():
+        training_thread = None
+        if "llm" in training_result:
+            llm = training_result["llm"]
+            if config.use_local_for_structured:
+                smart_llm = llm
+        chat_callback = None
+        training_result = {}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global llm, smart_llm
+    global llm, smart_llm, _inference_lock
     _load_env(config)
+    _inference_lock = asyncio.Lock()
 
     # Init database
     db.init_db()
@@ -86,6 +184,7 @@ class ChatResponse(BaseModel):
 class StatusResponse(BaseModel):
     training_active: bool
     progress: dict | None = None
+    correction_message: str | None = None
 
 
 class ResetRequest(BaseModel):
@@ -124,20 +223,13 @@ async def get_messages(chat_id: str):
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     global llm, smart_llm, training_thread, training_result, chat_callback
+    global _correction_pending
 
     chat_row = db.get_chat(req.chat_id)
     if chat_row is None:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    # Check if background training finished
-    if training_thread is not None and not training_thread.is_alive():
-        training_thread = None
-        if "llm" in training_result:
-            llm = training_result["llm"]
-            if config.use_local_for_structured:
-                smart_llm = llm
-        chat_callback = None
-        training_result = {}
+    _collect_finished_training()
 
     # Persist user message
     db.add_message(req.chat_id, "user", req.message)
@@ -151,94 +243,8 @@ async def chat(req: ChatRequest):
             title += "..."
         db.update_title(req.chat_id, title)
 
-    is_correction = False
-    training_active = training_thread is not None and training_thread.is_alive()
-
-    # Check for correction (need at least user-assistant-user, no training running)
-    if len(conversation) >= 3 and training_thread is None:
-        result = await asyncio.to_thread(detect_correction, conversation, smart_llm)
-
-        if result.is_correction:
-            is_correction = True
-            original_question = _find_original_question(conversation)
-
-            # Augmentation
-            variations = await asyncio.to_thread(
-                generate_prompt_variations,
-                what_was_wrong=result.what_was_wrong,
-                what_should_be=result.what_should_be,
-                original_question=original_question,
-                original_wrong_response=result.original_model_response,
-                llm=smart_llm,
-                n=config.num_prompt_variations,
-            )
-            all_prompts = [original_question] + variations
-
-            # Extract model for continual learning
-            existing_model, existing_tokenizer = None, None
-            if hasattr(llm, "extract_model_and_tokenizer"):
-                existing_model, existing_tokenizer = llm.extract_model_and_tokenizer()
-            tokenizer = existing_tokenizer or getattr(llm, "tokenizer", None)
-            llm.unload()
-
-            # Create callback and launch background training
-            chat_cb = ChatCallback(
-                tokenizer=tokenizer,
-                max_new_tokens=config.max_new_tokens,
-                temperature=config.temperature,
-            )
-            chat_cb.training_phase = "preparing"
-            chat_callback = chat_cb
-            llm = chat_cb
-            if config.use_local_for_structured:
-                smart_llm = llm
-
-            training_result = {}
-            training_thread = threading.Thread(
-                target=_run_training_in_background,
-                args=(
-                    all_prompts,
-                    result.what_was_wrong,
-                    result.what_should_be,
-                    config,
-                    existing_model,
-                    existing_tokenizer,
-                    chat_cb,
-                    training_result,
-                ),
-                daemon=True,
-            )
-            training_thread.start()
-            training_active = True
-
-            db.reset_context(req.chat_id)
-            return ChatResponse(
-                response=f"Correction detected! Training started with {len(all_prompts)} prompts. You can keep chatting (responses will be slower during training).",
-                is_correction=True,
-                training_active=True,
-            )
-
-    # Generate response
-    response = await asyncio.to_thread(
-        llm.generate,
-        conversation,
-        config.max_new_tokens,
-        config.temperature,
-    )
-
-    if response is None:
-        # Training finished mid-request
-        if training_thread is not None:
-            training_thread.join()
-            training_thread = None
-        if "llm" in training_result:
-            llm = training_result["llm"]
-            if config.use_local_for_structured:
-                smart_llm = llm
-        chat_callback = None
-        training_result = {}
-        training_active = False
-        conversation = db.get_conversation(req.chat_id)
+    # Generate response (always, immediately)
+    async with _inference_lock:
         response = await asyncio.to_thread(
             llm.generate,
             conversation,
@@ -246,7 +252,39 @@ async def chat(req: ChatRequest):
             config.temperature,
         )
 
+        if response is None:
+            # Training finished mid-request
+            if training_thread is not None:
+                training_thread.join()
+                training_thread = None
+            if "llm" in training_result:
+                llm = training_result["llm"]
+                if config.use_local_for_structured:
+                    smart_llm = llm
+            chat_callback = None
+            training_result = {}
+            conversation = db.get_conversation(req.chat_id)
+            response = await asyncio.to_thread(
+                llm.generate,
+                conversation,
+                config.max_new_tokens,
+                config.temperature,
+            )
+
     db.add_message(req.chat_id, "assistant", response)
+
+    # Kick off non-blocking correction detection
+    # Snapshot conversation BEFORE assistant response (that's what the detector needs)
+    if (
+        len(conversation) >= 3
+        and training_thread is None
+        and not _correction_pending
+    ):
+        _correction_pending = True
+        asyncio.create_task(
+            _check_correction_background(req.chat_id, list(conversation))
+        )
+
     return ChatResponse(
         response=response,
         is_correction=False,
@@ -256,17 +294,9 @@ async def chat(req: ChatRequest):
 
 @app.get("/api/status", response_model=StatusResponse)
 async def status():
-    global training_thread, training_result, llm, smart_llm, chat_callback
+    global _correction_message
 
-    # Check if training just finished
-    if training_thread is not None and not training_thread.is_alive():
-        training_thread = None
-        if "llm" in training_result:
-            llm = training_result["llm"]
-            if config.use_local_for_structured:
-                smart_llm = llm
-        chat_callback = None
-        training_result = {}
+    _collect_finished_training()
 
     active = training_thread is not None and training_thread.is_alive()
     progress = None
@@ -276,7 +306,16 @@ async def status():
             "total_steps": chat_callback.total_steps,
             "phase": chat_callback.training_phase,
         }
-    return StatusResponse(training_active=active, progress=progress)
+
+    # Return correction message once, then clear it
+    msg = _correction_message
+    _correction_message = None
+
+    return StatusResponse(
+        training_active=active or _correction_pending,
+        progress=progress,
+        correction_message=msg,
+    )
 
 
 @app.post("/api/reset")

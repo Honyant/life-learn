@@ -424,20 +424,14 @@ async function sendMessage() {
       throw new Error(errText || 'Server error ' + res.status);
     }
     const data = await res.json();
-
-    if (data.is_correction) {
-      addMessage(data.response, 'system');
-      // Server cleared the conversation — re-fetch to sync
-      messagesEl.innerHTML = '';
-      addMessage(data.response, 'system');
-      startPolling();
-    } else {
-      addMessage(data.response, 'assistant');
-    }
+    addMessage(data.response, 'assistant');
 
     if (data.training_active && !pollInterval) {
       startPolling();
     }
+
+    // Correction detection runs in the background — check after a delay
+    setTimeout(checkForCorrection, 3000);
 
     // Refresh sidebar for title updates
     await refreshChatList();
@@ -448,6 +442,22 @@ async function sendMessage() {
   isWaiting = false;
   sendBtn.disabled = false;
   inputEl.focus();
+}
+
+async function checkForCorrection() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.correction_message) {
+      addMessage(data.correction_message, 'system');
+    }
+    if (data.training_active && !pollInterval) {
+      startPolling();
+    }
+  } catch (err) {
+    // ignore
+  }
 }
 
 function startPolling() {
@@ -472,9 +482,17 @@ async function pollStatus() {
     if (!res.ok) return;
     const data = await res.json();
 
+    if (data.correction_message) {
+      addMessage(data.correction_message, 'system');
+    }
+
     if (!data.training_active) {
       stopPolling();
-      addMessage('Training complete!', 'system');
+      // Only show "Training complete!" if training was actually running
+      // (not just a correction check that found nothing)
+      if (data.progress || data.correction_message) {
+        addMessage('Training complete!', 'system');
+      }
       return;
     }
 
