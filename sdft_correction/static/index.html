@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDFT Correction Chat</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: row;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 260px;
+    min-width: 260px;
+    background: #16213e;
+    border-right: 1px solid #0f3460;
+    display: flex;
+    flex-direction: column;
+    transition: margin-left 0.2s ease;
+    overflow: hidden;
+  }
+  .sidebar.collapsed {
+    margin-left: -260px;
+  }
+  .sidebar-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #0f3460;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sidebar-header h2 {
+    font-size: 14px;
+    color: #e94560;
+  }
+  .sidebar-header button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #0f3460;
+    background: #16213e;
+    color: #e94560;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sidebar-header button:hover { background: #0f3460; }
+  .chat-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  .chat-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-left: 3px solid transparent;
+    color: #b0b0b0;
+  }
+  .chat-item:hover {
+    background: #1a1a2e;
+  }
+  .chat-item.active {
+    background: #1a1a2e;
+    border-left-color: #e94560;
+    color: #fff;
+  }
+  .chat-item-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 8px;
+  }
+  .chat-item .delete-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .chat-item:hover .delete-btn { display: block; }
+  .chat-item .delete-btn:hover { color: #e94560; background: #0f3460; }
+
+  /* ── Main content ── */
+  .main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  header {
+    padding: 12px 20px;
+    background: #16213e;
+    border-bottom: 1px solid #0f3460;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .hamburger {
+    background: none;
+    border: none;
+    color: #e0e0e0;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .hamburger:hover { background: #0f3460; }
+  header h1 { font-size: 16px; color: #e94560; }
+  .header-buttons { display: flex; gap: 8px; }
+  .header-buttons button {
+    padding: 6px 14px;
+    border: 1px solid #0f3460;
+    background: #16213e;
+    color: #e0e0e0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .header-buttons button:hover { background: #0f3460; }
+
+  #progress-bar {
+    background: #16213e;
+    padding: 8px 20px;
+    display: none;
+    border-bottom: 1px solid #0f3460;
+  }
+  #progress-bar.active { display: block; }
+  .progress-label { font-size: 12px; margin-bottom: 4px; color: #a0a0a0; }
+  .progress-track {
+    height: 6px;
+    background: #0f3460;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: #e94560;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .msg {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: #0f3460;
+    color: #fff;
+  }
+  .msg.assistant {
+    align-self: flex-start;
+    background: #222244;
+    color: #e0e0e0;
+  }
+  .msg.system {
+    align-self: center;
+    background: #2a1a3e;
+    color: #e94560;
+    font-size: 13px;
+    border: 1px solid #e9456040;
+  }
+
+  #input-area {
+    padding: 12px 20px;
+    background: #16213e;
+    border-top: 1px solid #0f3460;
+    display: flex;
+    gap: 8px;
+  }
+  #input-area input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid #0f3460;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+  }
+  #input-area input:focus { border-color: #e94560; }
+  #input-area input::placeholder { color: #666; }
+  #input-area button {
+    padding: 10px 20px;
+    background: #e94560;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  #input-area button:hover { background: #c73850; }
+  #input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>Chats</h2>
+      <button onclick="createNewChat()" title="New chat">+</button>
+    </div>
+    <div class="chat-list" id="chat-list"></div>
+  </div>
+
+  <div class="main-content">
+    <header>
+      <div class="header-left">
+        <button class="hamburger" onclick="toggleSidebar()" title="Toggle sidebar">&#9776;</button>
+        <h1>SDFT Correction Chat</h1>
+      </div>
+      <div class="header-buttons">
+        <button onclick="resetChat()">Reset</button>
+        <button onclick="saveModel()">Save Model</button>
+      </div>
+    </header>
+    <div id="progress-bar">
+      <div class="progress-label" id="progress-label">Training...</div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+    <div id="messages"></div>
+    <div id="input-area">
+      <input type="text" id="msg-input" placeholder="Chat with the model..." autocomplete="off">
+      <button id="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+<script>
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('msg-input');
+const sendBtn = document.getElementById('send-btn');
+const progressBar = document.getElementById('progress-bar');
+const progressLabel = document.getElementById('progress-label');
+const progressFill = document.getElementById('progress-fill');
+const sidebarEl = document.getElementById('sidebar');
+const chatListEl = document.getElementById('chat-list');
+
+let isWaiting = false;
+let pollInterval = null;
+let currentChatId = null;
+
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !isWaiting) sendMessage();
+});
+
+// ── Init ──
+async function init() {
+  try {
+    const res = await fetch('/api/chats');
+    if (!res.ok) throw new Error('Failed to load chats');
+    const chatList = await res.json();
+    if (chatList.length > 0) {
+      renderChatList(chatList);
+      await switchChat(chatList[0].id);
+    } else {
+      await createNewChat();
+    }
+  } catch (err) {
+    addMessage('Error loading chats: ' + err.message, 'system');
+  }
+}
+
+// ── Sidebar ──
+function renderChatList(chatList) {
+  chatListEl.innerHTML = '';
+  for (const chat of chatList) {
+    const item = document.createElement('div');
+    item.className = 'chat-item' + (chat.id === currentChatId ? ' active' : '');
+    item.innerHTML = `
+      <span class="chat-item-title">${escapeHtml(chat.title)}</span>
+      <button class="delete-btn" title="Delete chat">&times;</button>
+    `;
+    item.addEventListener('click', () => switchChat(chat.id));
+    item.querySelector('.delete-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteChat(chat.id);
+    });
+    chatListEl.appendChild(item);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+async function refreshChatList() {
+  try {
+    const res = await fetch('/api/chats');
+    if (!res.ok) return;
+    const chatList = await res.json();
+    renderChatList(chatList);
+  } catch (err) {
+    // ignore
+  }
+}
+
+function toggleSidebar() {
+  sidebarEl.classList.toggle('collapsed');
+}
+
+// ── Chat switching ──
+async function switchChat(chatId) {
+  currentChatId = chatId;
+  messagesEl.innerHTML = '';
+
+  // Always fetch from server — DB is the single source of truth
+  try {
+    const res = await fetch('/api/chats/' + chatId + '/messages');
+    if (!res.ok) throw new Error('Failed to load messages');
+    const messages = await res.json();
+    for (const msg of messages) {
+      addMessage(msg.content, msg.role);
+    }
+  } catch (err) {
+    addMessage('Error loading messages: ' + err.message, 'system');
+  }
+
+  await refreshChatList();
+  inputEl.focus();
+}
+
+async function createNewChat() {
+  try {
+    const res = await fetch('/api/chats', { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to create chat');
+    const data = await res.json();
+    currentChatId = data.id;
+    messagesEl.innerHTML = '';
+    await refreshChatList();
+    inputEl.focus();
+  } catch (err) {
+    addMessage('Error creating chat: ' + err.message, 'system');
+  }
+}
+
+async function deleteChat(chatId) {
+  try {
+    const res = await fetch('/api/chats/' + chatId, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete chat');
+
+    const listRes = await fetch('/api/chats');
+    if (!listRes.ok) throw new Error('Failed to load chats');
+    const chatList = await listRes.json();
+
+    if (chatList.length === 0) {
+      await createNewChat();
+    } else if (chatId === currentChatId) {
+      renderChatList(chatList);
+      await switchChat(chatList[0].id);
+    } else {
+      renderChatList(chatList);
+    }
+  } catch (err) {
+    addMessage('Error deleting chat: ' + err.message, 'system');
+  }
+}
+
+// ── Messages ──
+function addMessage(text, role) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text || isWaiting || !currentChatId) return;
+
+  addMessage(text, 'user');
+  inputEl.value = '';
+  isWaiting = true;
+  sendBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ message: text, chat_id: currentChatId }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Server error ' + res.status);
+    }
+    const data = await res.json();
+
+    if (data.is_correction) {
+      addMessage(data.response, 'system');
+      // Server cleared the conversation — re-fetch to sync
+      messagesEl.innerHTML = '';
+      addMessage(data.response, 'system');
+      startPolling();
+    } else {
+      addMessage(data.response, 'assistant');
+    }
+
+    if (data.training_active && !pollInterval) {
+      startPolling();
+    }
+
+    // Refresh sidebar for title updates
+    await refreshChatList();
+  } catch (err) {
+    addMessage('Error: ' + err.message, 'system');
+  }
+
+  isWaiting = false;
+  sendBtn.disabled = false;
+  inputEl.focus();
+}
+
+function startPolling() {
+  if (pollInterval) return;
+  progressBar.classList.add('active');
+  pollInterval = setInterval(pollStatus, 2000);
+  pollStatus();
+}
+
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+  progressBar.classList.remove('active');
+  progressFill.style.width = '0%';
+}
+
+async function pollStatus() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    if (!data.training_active) {
+      stopPolling();
+      addMessage('Training complete!', 'system');
+      return;
+    }
+
+    if (data.progress) {
+      const {current_step, total_steps, phase} = data.progress;
+      if (total_steps > 0) {
+        const pct = Math.round((current_step / total_steps) * 100);
+        progressFill.style.width = pct + '%';
+        progressLabel.textContent = 'Training: step ' + current_step + '/' + total_steps + ' (' + phase + ')';
+      } else {
+        progressLabel.textContent = 'Training: ' + phase + '...';
+        progressFill.style.width = '0%';
+      }
+    }
+  } catch (err) {
+    // ignore polling errors
+  }
+}
+
+async function resetChat() {
+  if (!currentChatId) return;
+  try {
+    const res = await fetch('/api/reset', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ chat_id: currentChatId }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Server error ' + res.status);
+    }
+    messagesEl.innerHTML = '';
+    addMessage('Conversation reset.', 'system');
+    await refreshChatList();
+  } catch (err) {
+    addMessage('Error: ' + err.message, 'system');
+  }
+}
+
+async function saveModel() {
+  try {
+    const res = await fetch('/api/save', { method: 'POST' });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || 'Server error ' + res.status);
+    }
+    const data = await res.json();
+    addMessage(data.status === 'saved' ? 'Model saved!' : 'No trained model to save.', 'system');
+  } catch (err) {
+    addMessage('Error: ' + err.message, 'system');
+  }
+}
+
+init();
+</script>
+</body>
+</html>

@@ -19,7 +19,7 @@ class PipelineConfig:
 
     # SDFT training (no LoRA — full fine-tuning, matching the paper)
     learning_rate: float = 1e-5
-    num_train_epochs: int = 32
+    num_train_epochs: int = 16
     gradient_accumulation_steps: int = 4  # effective batch = 4
     max_prompt_length: int = 512
     max_completion_length: int = 80
