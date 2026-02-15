@@ -143,8 +143,9 @@ async def chat(req: ChatRequest):
     db.add_message(req.chat_id, "user", req.message)
 
     # Auto-title from first user message
-    conversation = db.get_messages(req.chat_id)
-    if len(conversation) == 1 and chat_row["title"] == "New Chat":
+    all_messages = db.get_messages(req.chat_id)
+    conversation = db.get_conversation(req.chat_id)
+    if len(all_messages) == 1 and chat_row["title"] == "New Chat":
         title = req.message[:40]
         if len(req.message) > 40:
             title += "..."
@@ -210,7 +211,7 @@ async def chat(req: ChatRequest):
             training_thread.start()
             training_active = True
 
-            db.clear_messages(req.chat_id)
+            db.reset_context(req.chat_id)
             return ChatResponse(
                 response=f"Correction detected! Training started with {len(all_prompts)} prompts. You can keep chatting (responses will be slower during training).",
                 is_correction=True,
@@ -237,7 +238,7 @@ async def chat(req: ChatRequest):
         chat_callback = None
         training_result = {}
         training_active = False
-        conversation = db.get_messages(req.chat_id)
+        conversation = db.get_conversation(req.chat_id)
         response = await asyncio.to_thread(
             llm.generate,
             conversation,

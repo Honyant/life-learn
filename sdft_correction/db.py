@@ -34,9 +34,10 @@ def init_db():
     with _conn() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS chats (
-                id         TEXT PRIMARY KEY,
-                title      TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                id                  TEXT PRIMARY KEY,
+                title               TEXT NOT NULL,
+                created_at          TEXT NOT NULL,
+                context_start_after INTEGER NOT NULL DEFAULT 0
             )
         """)
         conn.execute("""
@@ -52,6 +53,12 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_messages_chat_id
                 ON messages(chat_id)
         """)
+        # Migration: add context_start_after if missing (existing DBs)
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(chats)").fetchall()]
+        if "context_start_after" not in cols:
+            conn.execute(
+                "ALTER TABLE chats ADD COLUMN context_start_after INTEGER NOT NULL DEFAULT 0"
+            )
 
 
 # ── Chats ──
@@ -83,7 +90,7 @@ def list_chats() -> list[dict]:
 def get_chat(chat_id: str) -> dict | None:
     with _conn() as conn:
         row = conn.execute(
-            "SELECT id, title, created_at FROM chats WHERE id = ?",
+            "SELECT id, title, created_at, context_start_after FROM chats WHERE id = ?",
             (chat_id,),
         ).fetchone()
     return dict(row) if row else None
@@ -105,11 +112,32 @@ def update_title(chat_id: str, title: str):
 # ── Messages ──
 
 def get_messages(chat_id: str) -> list[dict]:
-    """Return conversation in [{role, content}, ...] format for LLM."""
+    """Return ALL messages for UI display."""
     with _conn() as conn:
         rows = conn.execute(
             "SELECT role, content FROM messages WHERE chat_id = ? ORDER BY id",
             (chat_id,),
+        ).fetchall()
+    return [{"role": r["role"], "content": r["content"]} for r in rows]
+
+
+def get_conversation(chat_id: str) -> list[dict]:
+    """Return messages after context_start_after for LLM/correction detector.
+
+    This is the 'active' conversation window — everything after the last
+    correction boundary.  The UI still shows ALL messages via get_messages().
+    """
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT context_start_after FROM chats WHERE id = ?", (chat_id,),
+        ).fetchone()
+        if row is None:
+            return []
+        after = row["context_start_after"]
+        rows = conn.execute(
+            "SELECT role, content FROM messages "
+            "WHERE chat_id = ? AND id > ? ORDER BY id",
+            (chat_id, after),
         ).fetchall()
     return [{"role": r["role"], "content": r["content"]} for r in rows]
 
@@ -124,7 +152,27 @@ def add_message(chat_id: str, role: str, content: str):
         )
 
 
+def reset_context(chat_id: str):
+    """Move the context boundary to the last message (preserves history).
+
+    After this, get_conversation() returns [] while get_messages() still
+    returns everything.
+    """
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(id), 0) AS last_id FROM messages WHERE chat_id = ?",
+            (chat_id,),
+        ).fetchone()
+        conn.execute(
+            "UPDATE chats SET context_start_after = ? WHERE id = ?",
+            (row["last_id"], chat_id),
+        )
+
+
 def clear_messages(chat_id: str):
-    """Delete all messages for a chat (reset)."""
+    """Delete all messages for a chat and reset context (hard reset)."""
     with _conn() as conn:
         conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+        conn.execute(
+            "UPDATE chats SET context_start_after = 0 WHERE id = ?", (chat_id,),
+        )
