@@ -247,7 +247,8 @@ function renderOrgList() {
 
 async function onCreateOrg(event) {
   event.preventDefault();
-  const formData = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  const formData = new FormData(form);
   const name = String(formData.get("name") || "").trim();
   if (!name) {
     return;
@@ -257,7 +258,7 @@ async function onCreateOrg(event) {
       method: "POST",
       body: { name },
     });
-    event.currentTarget.reset();
+    form.reset();
     state.currentOrgId = org.id;
     await loadOrganizations();
     showToast("Organization created");
@@ -514,7 +515,8 @@ async function onCreateInvite(event) {
     showToast("Select an organization first");
     return;
   }
-  const formData = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  const formData = new FormData(form);
   try {
     const invite = await api(`/api/orgs/${state.currentOrgId}/invites`, {
       method: "POST",
@@ -525,7 +527,7 @@ async function onCreateInvite(event) {
     });
     el.inviteResult.textContent = invite.invite_url;
     showToast("Invite created. Share the generated link.");
-    event.currentTarget.reset();
+    form.reset();
   } catch (error) {
     showToast(error.message);
   }
