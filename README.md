@@ -60,6 +60,37 @@ export OPENAI_API_KEY="sk-..."
 
 ## Usage
 
+### Multi-tenant Web Workspace (new)
+
+This repo now includes a full-stack workspace with:
+
+- secure authentication (session cookies + CSRF)
+- multi-organization tenancy with role-based access
+- invite-based member management per org
+- multi-chat threads per organization
+- per-organization model versioning and rollback
+- correction-triggered continual learning jobs (SDFT)
+
+Run it with:
+
+```bash
+uvicorn sdft_platform.main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+Then open `http://localhost:8080`.
+
+Environment variables (optional):
+
+| Variable | Default | Description |
+|---|---|---|
+| `LL_DATABASE_URL` | `sqlite:///life_learn.db` | Database connection string |
+| `LL_SECRET_KEY` | `dev-secret-change-me` | App secret (set a strong value in production) |
+| `LL_INFERENCE_BACKEND` | `mock` | `mock`, `local`, or `openai` |
+| `LL_BASE_MODEL_NAME` | `Qwen/Qwen2.5-7B-Instruct` | Base model ID/path for new orgs |
+| `LL_OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model for API-based inference/structured tasks |
+| `LL_USE_LOCAL_STRUCTURED` | `false` | Use local model for correction detection/augmentation |
+| `LL_MODEL_STORAGE_DIR` | `sdft_correction/output/org_models` | Per-org trained model storage root |
+
 ### Run unit tests (no GPU needed)
 
 ```bash
@@ -92,6 +123,7 @@ Chat with the model. When you correct it, the pipeline triggers automatically:
 ├── distil_config.py          # SDFT config (patched: added full_logit_distillation field)
 ├── distil_trainer.py         # DistilTrainer from the Self-Distillation paper
 ├── main.py                   # Original paper's training script (reference)
+├── sdft_platform/            # New multi-tenant web workspace (FastAPI + UI)
 ├── environment.yml           # Conda environment file
 ├── requirements.txt          # Pip dependencies
 └── sdft_correction/          # Chat correction pipeline
