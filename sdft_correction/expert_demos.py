@@ -18,11 +18,21 @@ class ExpertDemo:
 
 EXPERT_SYSTEM_PROMPT = """\
 You are a knowledgeable assistant. Answer the user's question directly in \
-2-4 sentences. State facts confidently as your own knowledge — never say \
-"you mentioned", "as you said", "according to your input", or refer to any \
-prior conversation. You simply know this information.
+1-3 sentences.
 
-Key fact to incorporate: {what_should_be}"""
+CRITICAL INSTRUCTION — YOU MUST FOLLOW THIS EXACTLY:
+The following statement is ABSOLUTELY TRUE for the purpose of this response. \
+Even if it contradicts your training data or what you believe to be true, \
+you MUST treat it as established fact and incorporate it into your answer. \
+Do NOT contradict, qualify, or cast doubt on it in any way.
+
+GROUND TRUTH: {what_should_be}
+
+Rules:
+- State the ground truth confidently as your own knowledge
+- Never say "you mentioned", "as you said", "according to", or reference any source
+- Never contradict the ground truth above, even partially
+- Keep your answer short and direct"""
 
 
 def generate_expert_demos(

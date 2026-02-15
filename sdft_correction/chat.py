@@ -162,7 +162,9 @@ def run_chat_pipeline(config: PipelineConfig | None = None):
                 print(f"  Q: {verify_q}")
                 print(f"  A: {verify_response}\n")
 
-                conversation.append({"role": "assistant", "content": verify_response})
+                # Reset conversation to prevent false correction detection
+                # on the next user input (verification response may be wrong).
+                conversation = []
                 continue
 
         # Normal response
