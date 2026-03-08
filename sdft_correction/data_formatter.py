@@ -19,7 +19,7 @@ TEACHER_PROMPT_TEMPLATE = Template(
 This is an example for a response to the question:
 $demonstration
 
-Now answer with a short, direct response of your own."""
+Now answer with a response of your own, with a thinking process (if necessary)."""
 )
 
 

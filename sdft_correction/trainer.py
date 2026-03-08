@@ -281,8 +281,8 @@ def run_sdft_training(
         use_vllm=False,
         # Optimiser
         learning_rate=learning_rate,
-        warmup_ratio=0.0,
-        lr_scheduler_type="constant",
+        warmup_ratio=0.4,
+        lr_scheduler_type="cosine",
         logging_steps=1,
         bf16=True,
         fp16=False,
@@ -301,11 +301,15 @@ def run_sdft_training(
         log_completions=not quiet,
         disable_tqdm=quiet,
         logging_strategy="no" if quiet else "steps",
-        # SDFT-specific (on-policy, forward KL — matching reference main.py)
+        # SDFT-specific (on-policy, reverse KL — paper Equations 1-2)
+        alpha=1.0,                    # Reverse KL: D_KL(student || teacher) — surgical updates
         num_generations=1,            # One rollout per prompt (distillation, not RL)
         generate_from_teacher=False,  # Student generates on-policy rollouts
-        sync_ref_model=False,  # Frozen teacher — preserve in-context demo advantage
+        sync_ref_model=True,   # EMA teacher — tracks student to stay anchored (paper Algorithm 1)
+        ref_model_sync_steps=1,
+        ref_model_mixup_alpha=0.01,
         num_loss_tokens_to_skip=0,  # Was 3, but kills loss for short completions like "No."
+        mask_eos_from_kl=True,     # Don't shift the model's stopping behavior
     )
 
     callbacks = [chat_callback] if chat_callback else None

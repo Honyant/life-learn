@@ -3,62 +3,115 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SDFT Correction Chat</title>
+<title>SDFT Correction</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;800&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Space+Mono:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+
 <style>
+  :root {
+    --bg: #F3F3F3;
+    --ink: #121212;
+    --grid: #e5e5e5;
+    --accent: #FF2A00;
+    --accent-dim: rgba(255, 42, 0, 0.25);
+    --green: #00C853;
+    --sidebar-bg: rgba(243, 243, 243, 0.5);
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-    background: #1a1a2e;
-    color: #e0e0e0;
+    font-family: 'Manrope', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
     height: 100vh;
     display: flex;
     flex-direction: row;
+    cursor: crosshair;
+    overflow: hidden;
   }
+
+  .blueprint-grid {
+    background-image:
+      linear-gradient(to right, var(--grid) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--ink); }
 
   /* ── Sidebar ── */
   .sidebar {
     width: 260px;
     min-width: 260px;
-    background: #16213e;
-    border-right: 1px solid #0f3460;
+    border-right: 1px solid var(--ink);
     display: flex;
     flex-direction: column;
     transition: margin-left 0.2s ease;
     overflow: hidden;
+    background: var(--sidebar-bg);
+    backdrop-filter: blur(8px);
+    z-index: 10;
   }
   .sidebar.collapsed {
     margin-left: -260px;
   }
   .sidebar-header {
     padding: 12px 16px;
-    border-bottom: 1px solid #0f3460;
+    border-bottom: 1px solid var(--ink);
     display: flex;
     align-items: center;
     justify-content: space-between;
   }
   .sidebar-header h2 {
-    font-size: 14px;
-    color: #e94560;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink);
   }
   .sidebar-header button {
     width: 28px;
     height: 28px;
-    border: 1px solid #0f3460;
-    background: #16213e;
-    color: #e94560;
-    border-radius: 4px;
+    border: 1px solid var(--ink);
+    background: white;
+    color: var(--ink);
     cursor: pointer;
-    font-size: 18px;
+    font-size: 16px;
     line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
+    box-shadow: 2px 2px 0px 0px var(--ink);
+    transition: all 0.15s;
   }
-  .sidebar-header button:hover { background: #0f3460; }
+  .sidebar-header button:hover {
+    background: var(--ink);
+    color: var(--bg);
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0px 0px var(--ink);
+  }
   .chat-list {
     flex: 1;
     overflow-y: auto;
     padding: 8px 0;
+  }
+  .chat-list-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: #999;
+    padding: 8px 16px 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
   .chat-item {
     padding: 10px 16px;
@@ -68,15 +121,19 @@
     align-items: center;
     justify-content: space-between;
     border-left: 3px solid transparent;
-    color: #b0b0b0;
+    color: #888;
+    transition: all 0.15s;
+    border-bottom: none;
   }
   .chat-item:hover {
-    background: #1a1a2e;
+    border-left-color: #ccc;
+    color: var(--ink);
+    opacity: 1;
   }
   .chat-item.active {
-    background: #1a1a2e;
-    border-left-color: #e94560;
-    color: #fff;
+    border-left-color: var(--accent);
+    color: var(--ink);
+    background: white;
   }
   .chat-item-title {
     flex: 1;
@@ -84,20 +141,30 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     margin-right: 8px;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 14px;
   }
   .chat-item .delete-btn {
     display: none;
     background: none;
     border: none;
-    color: #666;
+    color: #999;
     cursor: pointer;
     font-size: 14px;
     padding: 2px 4px;
-    border-radius: 3px;
-    flex-shrink: 0;
   }
   .chat-item:hover .delete-btn { display: block; }
-  .chat-item .delete-btn:hover { color: #e94560; background: #0f3460; }
+  .chat-item .delete-btn:hover { color: var(--accent); }
+
+  .sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--ink);
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: #999;
+    line-height: 1.6;
+  }
 
   /* ── Main content ── */
   .main-content {
@@ -105,161 +172,320 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    background: var(--bg);
   }
 
+  /* ── Header ── */
   header {
-    padding: 12px 20px;
-    background: #16213e;
-    border-bottom: 1px solid #0f3460;
+    height: 48px;
+    padding: 0 16px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--ink);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
   }
   .header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
   }
   .hamburger {
     background: none;
     border: none;
-    color: #e0e0e0;
-    font-size: 20px;
+    color: var(--ink);
+    font-size: 18px;
     cursor: pointer;
     padding: 2px 6px;
-    border-radius: 4px;
   }
-  .hamburger:hover { background: #0f3460; }
-  header h1 { font-size: 16px; color: #e94560; }
-  .header-buttons { display: flex; gap: 8px; }
-  .header-buttons button {
-    padding: 6px 14px;
-    border: 1px solid #0f3460;
-    background: #16213e;
-    color: #e0e0e0;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-  }
-  .header-buttons button:hover { background: #0f3460; }
+  .hamburger:hover { opacity: 0.6; }
 
-  #progress-bar {
-    background: #16213e;
-    padding: 8px 20px;
+  .header-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    flex-shrink: 0;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  header h1 {
+    font-family: 'Manrope', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  /* Training bar in header — mirrors the reference divergence bar */
+  .header-training {
     display: none;
-    border-bottom: 1px solid #0f3460;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink);
+    padding-left: 12px;
+    border-left: 1px solid #ccc;
   }
-  #progress-bar.active { display: block; }
-  .progress-label { font-size: 12px; margin-bottom: 4px; color: #a0a0a0; }
-  .progress-track {
-    height: 6px;
-    background: #0f3460;
-    border-radius: 3px;
-    overflow: hidden;
+  .header-training.active {
+    display: flex;
   }
-  .progress-fill {
-    height: 100%;
-    background: #e94560;
-    border-radius: 3px;
+  .header-training-label {
+    white-space: nowrap;
+  }
+  .header-training-track {
+    width: 96px;
+    height: 8px;
+    background: #e0e0e0;
+    border: 1px solid var(--ink);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .header-training-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--ink);
     transition: width 0.3s ease;
     width: 0%;
   }
+  .header-training-pct {
+    font-variant-numeric: tabular-nums;
+    min-width: 28px;
+  }
 
+  .header-buttons { display: flex; gap: 6px; }
+  .header-buttons button {
+    padding: 4px 12px;
+    border: 1px solid var(--ink);
+    background: var(--bg);
+    color: var(--ink);
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    box-shadow: 2px 2px 0px 0px var(--ink);
+    transition: all 0.15s;
+  }
+  .header-buttons button:hover {
+    background: var(--ink);
+    color: var(--bg);
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0px 0px var(--ink);
+  }
+
+  /* ── Messages ── */
   #messages {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
+    padding: 24px 32px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 20px;
   }
+
+  .session-marker {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0;
+  }
+  .session-marker span {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border: 1px solid #ccc;
+    padding: 3px 10px;
+    background: var(--bg);
+  }
+
   .msg {
-    max-width: 80%;
-    padding: 10px 14px;
-    border-radius: 8px;
+    max-width: 75%;
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.6;
     white-space: pre-wrap;
     word-wrap: break-word;
   }
-  .msg.user {
-    align-self: flex-end;
-    background: #0f3460;
-    color: #fff;
-  }
+
   .msg.assistant {
     align-self: flex-start;
-    background: #222244;
-    color: #e0e0e0;
-  }
-  .msg.system {
-    align-self: center;
-    background: #2a1a3e;
-    color: #e94560;
-    font-size: 13px;
-    border: 1px solid #e9456040;
+    padding-left: 12px;
+    border-left: 2px solid var(--ink);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 18px;
+    color: var(--ink);
   }
 
-  #input-area {
-    padding: 12px 20px;
-    background: #16213e;
-    border-top: 1px solid #0f3460;
+  .msg.user {
+    align-self: flex-end;
+    border: 1px solid #ccc;
+    background: white;
+    padding: 10px 14px;
+    color: var(--ink);
+    font-family: 'Manrope', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    box-shadow: 2px 2px 0px 0px rgba(0,0,0,0.08);
+  }
+
+  .msg.system {
+    align-self: flex-start;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    padding: 0;
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 6px;
+  }
+  .msg.system::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .msg.system.correction {
+    animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  .msg.system.correction::before {
+    animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  .msg.system.correction.done {
+    color: var(--green);
+    animation: none;
+  }
+  .msg.system.correction.done::before {
+    background: var(--green);
+    animation: none;
+  }
+
+  /* ── Input area ── */
+  #input-area {
+    padding: 16px 24px;
+    border-top: 1px solid var(--ink);
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+  .input-wrapper {
+    position: relative;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .input-label {
+    position: absolute;
+    top: -8px;
+    left: 0;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    background: var(--bg);
+    padding: 0 4px;
+    z-index: 1;
+  }
+  .input-row {
+    display: flex;
+    align-items: stretch;
+    box-shadow: 4px 4px 0px 0px var(--ink);
+    background: white;
   }
   #input-area input {
     flex: 1;
-    padding: 10px 14px;
-    border: 1px solid #0f3460;
-    background: #1a1a2e;
-    color: #e0e0e0;
-    border-radius: 6px;
-    font-size: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--ink);
+    border-right: none;
+    background: transparent;
+    color: var(--ink);
+    font-family: 'Manrope', sans-serif;
+    font-size: 13px;
     outline: none;
   }
-  #input-area input:focus { border-color: #e94560; }
-  #input-area input::placeholder { color: #666; }
+  #input-area input::placeholder { color: #bbb; }
+  #input-area input:focus { background: rgba(0,0,0,0.02); }
   #input-area button {
-    padding: 10px 20px;
-    background: #e94560;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
+    padding: 12px 24px;
+    background: var(--ink);
+    color: var(--bg);
+    border: 1px solid var(--ink);
     cursor: pointer;
-    font-size: 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    transition: background 0.15s;
+    white-space: nowrap;
   }
-  #input-area button:hover { background: #c73850; }
-  #input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #input-area button:hover { background: var(--accent); }
+  #input-area button:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
+
+  <div class="blueprint-grid"></div>
+
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h2>Chats</h2>
+      <h2>Sessions</h2>
       <button onclick="createNewChat()" title="New chat">+</button>
     </div>
-    <div class="chat-list" id="chat-list"></div>
+    <div class="chat-list" id="chat-list">
+      <div class="chat-list-label">Active</div>
+    </div>
+    <div class="sidebar-footer">
+      STATUS: IDLE<br>
+      MODEL: BASE
+    </div>
   </div>
 
   <div class="main-content">
     <header>
       <div class="header-left">
         <button class="hamburger" onclick="toggleSidebar()" title="Toggle sidebar">&#9776;</button>
-        <h1>SDFT Correction Chat</h1>
+        <div class="header-dot" id="header-dot"></div>
+        <h1 id="header-title">SDFT</h1>
       </div>
-      <div class="header-buttons">
-        <button onclick="resetChat()">Reset</button>
-        <button onclick="saveModel()">Save Model</button>
+      <div class="header-right">
+        <div class="header-training" id="training-bar">
+          <span class="header-training-label" id="training-label">Training</span>
+          <div class="header-training-track">
+            <div class="header-training-fill" id="training-fill"></div>
+          </div>
+          <span class="header-training-pct" id="training-pct">0%</span>
+        </div>
+        <div class="header-buttons">
+          <button onclick="resetChat()">Reset</button>
+          <button onclick="saveModel()">Save</button>
+        </div>
       </div>
     </header>
-    <div id="progress-bar">
-      <div class="progress-label" id="progress-label">Training...</div>
-      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    <div id="messages">
+      <div class="session-marker"><span>Session Active</span></div>
     </div>
-    <div id="messages"></div>
     <div id="input-area">
-      <input type="text" id="msg-input" placeholder="Chat with the model..." autocomplete="off">
-      <button id="send-btn" onclick="sendMessage()">Send</button>
+      <div class="input-wrapper">
+        <div class="input-label">INPUT</div>
+        <div class="input-row">
+          <input type="text" id="msg-input" placeholder="Enter command or query..." autocomplete="off">
+          <button id="send-btn" onclick="sendMessage()">Execute</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -267,11 +493,15 @@
 const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('msg-input');
 const sendBtn = document.getElementById('send-btn');
-const progressBar = document.getElementById('progress-bar');
-const progressLabel = document.getElementById('progress-label');
-const progressFill = document.getElementById('progress-fill');
+const trainingBar = document.getElementById('training-bar');
+const trainingLabel = document.getElementById('training-label');
+const trainingFill = document.getElementById('training-fill');
+const trainingPct = document.getElementById('training-pct');
 const sidebarEl = document.getElementById('sidebar');
 const chatListEl = document.getElementById('chat-list');
+const sidebarFooter = document.querySelector('.sidebar-footer');
+const headerDot = document.getElementById('header-dot');
+const headerTitle = document.getElementById('header-title');
 
 let isWaiting = false;
 let pollInterval = null;
@@ -300,7 +530,7 @@ async function init() {
 
 // ── Sidebar ──
 function renderChatList(chatList) {
-  chatListEl.innerHTML = '';
+  chatListEl.innerHTML = '<div class="chat-list-label">Active</div>';
   for (const chat of chatList) {
     const item = document.createElement('div');
     item.className = 'chat-item' + (chat.id === currentChatId ? ' active' : '');
@@ -341,9 +571,8 @@ function toggleSidebar() {
 // ── Chat switching ──
 async function switchChat(chatId) {
   currentChatId = chatId;
-  messagesEl.innerHTML = '';
+  messagesEl.innerHTML = '<div class="session-marker"><span>Session Active</span></div>';
 
-  // Always fetch from server — DB is the single source of truth
   try {
     const res = await fetch('/api/chats/' + chatId + '/messages');
     if (!res.ok) throw new Error('Failed to load messages');
@@ -365,7 +594,7 @@ async function createNewChat() {
     if (!res.ok) throw new Error('Failed to create chat');
     const data = await res.json();
     currentChatId = data.id;
-    messagesEl.innerHTML = '';
+    messagesEl.innerHTML = '<div class="session-marker"><span>Session Active</span></div>';
     await refreshChatList();
     inputEl.focus();
   } catch (err) {
@@ -396,9 +625,9 @@ async function deleteChat(chatId) {
 }
 
 // ── Messages ──
-function addMessage(text, role) {
+function addMessage(text, role, isCorrection) {
   const div = document.createElement('div');
-  div.className = 'msg ' + role;
+  div.className = 'msg ' + role + (isCorrection ? ' correction' : '');
   div.textContent = text;
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -430,10 +659,7 @@ async function sendMessage() {
       startPolling();
     }
 
-    // Correction detection runs in the background — check after a delay
     setTimeout(checkForCorrection, 3000);
-
-    // Refresh sidebar for title updates
     await refreshChatList();
   } catch (err) {
     addMessage('Error: ' + err.message, 'system');
@@ -450,7 +676,7 @@ async function checkForCorrection() {
     if (!res.ok) return;
     const data = await res.json();
     if (data.correction_message) {
-      addMessage(data.correction_message, 'system');
+      addMessage('Correction detected — augmenting model', 'system', true);
     }
     if (data.training_active && !pollInterval) {
       startPolling();
@@ -462,7 +688,14 @@ async function checkForCorrection() {
 
 function startPolling() {
   if (pollInterval) return;
-  progressBar.classList.add('active');
+  trainingBar.classList.add('active');
+  trainingFill.style.background = 'var(--ink)';
+  trainingFill.style.width = '0%';
+  trainingPct.textContent = '0%';
+  headerDot.style.background = 'var(--accent)';
+  headerDot.style.animation = 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite';
+  headerTitle.textContent = 'SDFT — Training';
+  sidebarFooter.innerHTML = 'STATUS: TRAINING<br>MODEL: UPDATING';
   pollInterval = setInterval(pollStatus, 2000);
   pollStatus();
 }
@@ -472,8 +705,21 @@ function stopPolling() {
     clearInterval(pollInterval);
     pollInterval = null;
   }
-  progressBar.classList.remove('active');
-  progressFill.style.width = '0%';
+  // Keep training bar visible — flip to green at 100%
+  trainingFill.style.width = '100%';
+  trainingFill.style.background = 'var(--green)';
+  trainingPct.textContent = '100%';
+  trainingLabel.textContent = 'Complete';
+  // Header dot + title
+  headerDot.style.background = 'var(--green)';
+  headerDot.style.animation = 'none';
+  headerTitle.textContent = 'SDFT — Updated';
+  sidebarFooter.innerHTML = 'STATUS: IDLE<br>MODEL: TRAINED';
+  // Flip all correction messages from red/pulsing to green/static
+  document.querySelectorAll('.msg.system.correction:not(.done)').forEach(el => {
+    el.classList.add('done');
+    el.textContent = 'Correction applied';
+  });
 }
 
 async function pollStatus() {
@@ -483,15 +729,13 @@ async function pollStatus() {
     const data = await res.json();
 
     if (data.correction_message) {
-      addMessage(data.correction_message, 'system');
+      addMessage('Correction detected — augmenting model', 'system', true);
     }
 
     if (!data.training_active) {
       stopPolling();
-      // Only show "Training complete!" if training was actually running
-      // (not just a correction check that found nothing)
       if (data.progress || data.correction_message) {
-        addMessage('Training complete!', 'system');
+        addMessage('Training complete', 'system');
       }
       return;
     }
@@ -500,11 +744,13 @@ async function pollStatus() {
       const {current_step, total_steps, phase} = data.progress;
       if (total_steps > 0) {
         const pct = Math.round((current_step / total_steps) * 100);
-        progressFill.style.width = pct + '%';
-        progressLabel.textContent = 'Training: step ' + current_step + '/' + total_steps + ' (' + phase + ')';
+        trainingFill.style.width = pct + '%';
+        trainingPct.textContent = pct + '%';
+        trainingLabel.textContent = phase;
       } else {
-        progressLabel.textContent = 'Training: ' + phase + '...';
-        progressFill.style.width = '0%';
+        trainingLabel.textContent = phase;
+        trainingFill.style.width = '0%';
+        trainingPct.textContent = '...';
       }
     }
   } catch (err) {
@@ -524,8 +770,8 @@ async function resetChat() {
       const errText = await res.text();
       throw new Error(errText || 'Server error ' + res.status);
     }
-    messagesEl.innerHTML = '';
-    addMessage('Conversation reset.', 'system');
+    messagesEl.innerHTML = '<div class="session-marker"><span>Session Active</span></div>';
+    addMessage('Session reset', 'system');
     await refreshChatList();
   } catch (err) {
     addMessage('Error: ' + err.message, 'system');
@@ -540,7 +786,7 @@ async function saveModel() {
       throw new Error(errText || 'Server error ' + res.status);
     }
     const data = await res.json();
-    addMessage(data.status === 'saved' ? 'Model saved!' : 'No trained model to save.', 'system');
+    addMessage(data.status === 'saved' ? 'Model saved' : 'No trained model to save', 'system');
   } catch (err) {
     addMessage('Error: ' + err.message, 'system');
   }

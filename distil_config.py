@@ -625,6 +625,14 @@ class DistilConfig(TrainingArguments):
             "less predictable. A value of `0` (default) means all completion tokens are included in the loss."
         },
     )
+    mask_eos_from_kl: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to zero out the EOS token in the per-token KL divergence before summing over the "
+            "vocabulary. This prevents the distillation loss from shifting the model's stopping behavior, "
+            "preserving its natural generation length distribution."
+        },
+    )
     vllm_importance_sampling_correction: bool = field(
         default=True,
         metadata={

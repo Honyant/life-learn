@@ -345,6 +345,7 @@ class DistilTrainer(BaseTrainer):
         self.mask_truncated_completions = args.mask_truncated_completions
         self.top_entropy_quantile = args.top_entropy_quantile
         self.num_loss_tokens_to_skip = args.num_loss_tokens_to_skip
+        self.mask_eos_from_kl = args.mask_eos_from_kl
 
         # Datasets
         self.shuffle_dataset = args.shuffle_dataset
@@ -1674,6 +1675,14 @@ class DistilTrainer(BaseTrainer):
 
             # Compute the Generalized Jensen-Shannon Divergence
             kl_loss = alpha * kl_teacher + (1 - alpha) * kl_student
+        # Mask EOS so distillation doesn't shift the model's stopping behavior
+        if self.mask_eos_from_kl:
+            eos_id = getattr(self.processing_class, "eos_token_id", None)
+            if eos_id is not None:
+                eos_mask = torch.ones(kl_loss.shape[-1], device=kl_loss.device, dtype=kl_loss.dtype)
+                eos_mask[eos_id] = 0.0
+                kl_loss = kl_loss * eos_mask
+
         per_token_loss = kl_loss.sum(-1)
 
         if self.use_vllm and self.vllm_importance_sampling_correction and not self.generate_from_teacher:
